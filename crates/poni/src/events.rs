@@ -7,6 +7,7 @@ use crate::gfx::Image;
 use crate::state::{MediaSession, PowerState, SysStats};
 use poni_core::health::HealthSnapshot;
 use poni_core::lrc::Lyrics;
+use poni_core::agenda;
 use poni_core::oyenza::{Activity, Arrival, Bill, Saved};
 use poni_core::romanize::Ruby;
 use poni_core::timeline::Timeline;
@@ -105,6 +106,14 @@ pub enum OyenzaEvent {
     /// The steps the phone sent, for the Health page; None: none to show (off in
     /// Oyenza on the phone, or a server from before steps).
     Health(Option<HealthSnapshot>),
+    /// The day for the Today page, from the apps switched on in oyenza.app (asked
+    /// while the page is on screen).
+    Day(agenda::Answer),
+    /// The server has no day for the Today page (a server from before it, or
+    /// switched off there): the page stays as it was before signing in mattered.
+    DayUnavailable,
+    /// The day couldn't be read just now (offline, a server error).
+    DayFailed,
     NoteSaved(Vec<Saved>),
     /// The note wasn't saved; the island puts `text` back and says why (`code`).
     NoteFailed { text: String, code: String },
@@ -152,7 +161,6 @@ pub enum AppEvent {
     /// Show over games: whether Windows lets Poni read frames (a check, or
     /// the one-time OK's outcome).
     FpsAccess(crate::state::FpsAccess),
-    ClipboardText(String),
     /// Phone drop's server: a phone opened the page, asked, sent, gave up.
     Phone(poni_core::phonedrop::Event),
     /// Paired phones: pairing done, the list changed, files from a phone.
@@ -164,6 +172,10 @@ pub enum AppEvent {
     Update(crate::services::update::UpdateEvent),
     /// Where Windows says the PC is (`services::location`), for prayer times.
     Located(crate::services::location::Located),
+    /// One of prayer times' online city files (`services::cities`).
+    Cities { file: String, got: Result<poni_core::prayer::World, String> },
+    /// The Stocks page's prices, names and years (`services::stocks`).
+    Stocks(crate::services::stocks::StocksEvent),
     /// The adzan finished playing, or couldn't play on.
     AdzanEnded,
     /// Start with Windows is on (true) or off, read for the Settings page.

@@ -1,5 +1,5 @@
-//! Health page: today's steps against the goal, the week as bars, and where
-//! the numbers came from.
+//! Health page, the Health add-on's (off until switched on): today's steps
+//! against the goal, the week as bars, and where the numbers came from.
 //!
 //! The numbers come from the person's phone: Oyenza reads daily totals from
 //! Apple Health or Health Connect and, with Show on Oyenza Studio turned on
@@ -135,8 +135,8 @@ fn draw_today(ui: &mut Ui, st: &AppState, h: &HealthSnapshot, steps: u32, goal: 
     }
 }
 
-/// "Updated 08:12" today, "Updated yesterday", or "Updated 21 Oct".
-fn updated_text(st: &AppState, at: i64) -> String {
+/// "Updated 08:12" today, "Updated yesterday", or "Updated 21 Oct" (the Today page's day too).
+pub(crate) fn updated_text(st: &AppState, at: i64) -> String {
     let local = st.local;
     let since_midnight = local.hour as i64 * 3600 + local.minute as i64 * 60 + local.second as i64;
     let ago = (st.unix - at).max(0);

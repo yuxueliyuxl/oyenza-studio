@@ -18,7 +18,7 @@ concurrency:
 
 env:
   # Keep in sync with Cargo.toml's workspace version, installer/poni.nsi and installer/poni.iss.
-  PONI_VERSION: "0.2.6"
+  PONI_VERSION: "0.2.13"
 
 jobs:
   core:
@@ -90,6 +90,13 @@ jobs:
             Stop-Process -Id $am.Id -Force -ErrorAction SilentlyContinue
             Get-Content $env:PONI_FAKE_AM_LOG -ErrorAction SilentlyContinue
           }
+
+      # The Stocks thread against the live oyenza.trade, from the build above.
+      # The self-test shows a made-up market and asks for nothing, which is
+      # how 0.2.11 shipped a thread that never asked. Silence fails the step;
+      # oyenza.trade answering badly only warns.
+      - name: Stocks from the live oyenza.trade
+        run: cargo test -p poni --release the_live_market_comes_in -- --ignored --nocapture
 
   # The self-tests and smoke runs on three machines at once, from the
   # poni.exe built above. Each step is the same as when one machine ran them
@@ -341,6 +348,19 @@ jobs:
         shell: pwsh
         run: ./tools/ci-smoke.ps1 -Exe target\release\poni.exe -Out smoke-out
 
+      # Finger taps (InjectTouchInput, no touch screen needed): beside and
+      # below the island they reach the window under it, on the island they
+      # open it, and outside the open island they close it.
+      - name: Smoke run, touch
+        if: matrix.group == 'smoke'
+        shell: pwsh
+        run: ./tools/ci-smoke-touch.ps1 -Exe target\release\poni.exe -Out smoke-touch
+
+      - name: Smoke run, touch, Pill theme
+        if: matrix.group == 'smoke'
+        shell: pwsh
+        run: ./tools/ci-smoke-touch.ps1 -Exe target\release\poni.exe -Out smoke-touch-pill -Theme pill
+
       # The Pill theme on a real desktop: the island floats below the top
       # edge, so the smoke run looks for it there, and the gap above it takes
       # the mouse while its shadow lets clicks through (no weight check: that
@@ -384,6 +404,7 @@ jobs:
             exit 1
           }
           ./tools/ci-smoke.ps1 -Exe target\release\poni.exe -Out smoke-soft
+          ./tools/ci-smoke-touch.ps1 -Exe target\release\poni.exe -Out smoke-touch-soft
 
       - name: Build installer (Inno Setup)
         if: matrix.group == 'smoke'
@@ -419,6 +440,9 @@ jobs:
             smoke-soft
             selftest-pill
             smoke-pill
+            smoke-touch
+            smoke-touch-pill
+            smoke-touch-soft
           if-no-files-found: warn
 
       - name: Upload the Inno Setup build (a check; releases ship the NSIS one)

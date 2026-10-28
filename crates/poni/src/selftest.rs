@@ -39,17 +39,17 @@ use crate::pages::{self, PageKind};
 use crate::paths;
 use crate::png;
 use crate::state::{
-    AppState, FpsAccess, GameState, Hud, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, MediaSession, Notice, NoticeAction, OyenzaLink,
+    AgendaState, AppState, CityFile, FpsAccess, GameState, Hud, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, MediaSession, Notice, NoticeAction, OyenzaLink,
     OyenzaState, PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, SysStats, VolumeState,
 };
 use crate::ui::wid;
-use poni_core::addons::{Status as AddonStatus, JAPANESE_READINGS, PRAYER_TIMES, SCRIPT_READER};
+use poni_core::addons::{Status as AddonStatus, HEALTH, JAPANESE_READINGS, PRAYER_TIMES, SCRIPT_READER, STOCKS, SYSTEM};
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::health::{HealthDay, HealthSnapshot, HealthSource};
 use poni_core::lrc::{parse_lrc, Lyrics};
 use poni_core::oyenza::{Activity, Bill, Day, DayPick, Saved, Seen, Txn, WalletRef};
 use poni_core::phonedrop::QrMatrix;
-use poni_core::prayer::PlaceList;
+use poni_core::prayer::{PlaceList, World};
 use poni_core::pomodoro::{Phase as PomoPhase, RunState};
 use poni_core::power::{PowerReading, PsuReading, Rail};
 use poni_core::settings::{IdleStyle, Theme};
@@ -86,11 +86,14 @@ const SETTLE_TIMEOUT: f64 = 3.0;
 const SOFT_GPU_SETTLE_TIMEOUT: f64 = 8.0;
 /// Seconds to wait for a simulated tab click to switch the page.
 const CLICK_TIMEOUT: f64 = 1.5;
-/// Stop visiting scenes after this many seconds. The 66 scenes take about
-/// 32 s under Wine at 100 % and 33 to 38 s at 200 % (a busy machine is the
-/// slow end); a CI step takes under 30 s for the whole run. The CI and Store
-/// test steps wait 120 s for the whole run, the Wine runner 180 s.
-const SCENE_DEADLINE: f64 = 50.0;
+/// Stop visiting scenes after this many seconds. The 89 scenes take about
+/// 45 s under Wine at 100 % (a busy machine is the slow end); on CI the Oyen
+/// theme with Japanese lyrics is the slowest run, about 63 s with 85 (it
+/// reached the old 50 s at scene 80 once the Today scenes came in, and 65 s
+/// was tight for four more). The CI and Store test steps wait 120 s for the
+/// whole run (this plus the writers' 3.5 s, and 40 s more for the animation
+/// runs, stays under it), the Wine runner 180 s.
+const SCENE_DEADLINE: f64 = 70.0;
 /// Give up waiting for PNG writers at this point: 3.5 s after the scene
 /// deadline, so the last scenes' pictures get their time however long the
 /// run took. (It was a fixed 43.5 s, left behind when SCENE_DEADLINE went
@@ -196,15 +199,6 @@ const LYRICS_ZH: &str = "\
 ";
 
 const NOTES_TXT: &str = "Weekend trip\n\n- ferry leaves at 9:40\n- pack the blue jacket\n- ask about the lighthouse tour\n";
-
-const CLIPS: [&str; 6] = [
-    "Lunch: noodles from the corner place, then a walk by the river",
-    "Tracking number PX-2048-7731",
-    "cargo build -p poni --release",
-    "#5AC8FA",
-    "https://example.com/projects/poni/notes",
-    "Meet at the north entrance at 6:15",
-];
 
 const GIB: u64 = 1024 * 1024 * 1024;
 
@@ -673,7 +667,8 @@ fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
             _ => DayPick::Today,
         },
         bills: vec![
-            bill("subscription", "Spotify", day(1), Some("Rp 54.990")),
+            // Today's page lists a bill due today; the Oyenza tab's scenes keep it tomorrow.
+            bill("subscription", "Spotify", day(if scene == Scene::TodayDay { 0 } else { 1 }), Some("Rp 54.990")),
             bill("card", "Kartu Kredit BCA", day(1), None),
             bill("subscription", "Netflix", day(5), Some("Rp 54.000")),
             bill("subscription", "Google One", day(8), Some("Rp 26.900")),
@@ -685,15 +680,65 @@ fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
             let kopi = Saved { id: "s1".into(), title: "Kopi".into(), amount: 25_000.0, text: "Rp 25.000".into(), category: Some("Makan & Minum".into()), wallet: "GoPay".into() };
             (vec![kopi], now + 9.5)
         }),
+        agenda: fake_agenda(st, scene),
+        agenda_unix: Some(st.unix - 120),
+        agenda_state: match scene {
+            Scene::TodayTiles => AgendaState::Unavailable,
+            Scene::TodayDay | Scene::TodayNoApps | Scene::TodayOff | Scene::TodayPicked => AgendaState::Ready,
+            _ => AgendaState::Waiting,
+        },
         ..OyenzaState::default()
     }
 }
 
-/// Prayer times for its scenes: on, in Kota Jakarta, its clock 8 minutes
-/// before today's Ashar (the real list arrives with the add-on's download;
-/// these few places are copied from it).
+/// The Today page's days for its scenes, around the clock it runs at
+/// (`agenda::sample`); none switched on for `TodayNoApps`, Google Calendar
+/// off (so no events came) for `TodayOff`.
+fn fake_agenda(st: &AppState, scene: Scene) -> Option<poni_core::agenda::Answer> {
+    use poni_core::agenda::{sample, Answer, Source};
+    let today = st.day_key();
+    let now_min = st.local.hour as i32 * 60 + st.local.minute as i32;
+    match scene {
+        Scene::TodayDay | Scene::TodayPicked => Some(sample(&today, now_min)),
+        Scene::TodayOff => {
+            let mut a = sample(&today, now_min);
+            a.apps.googlecalendar = Source::Off;
+            a.events.clear();
+            Some(a)
+        }
+        Scene::TodayNoApps => Some(Answer::none(&today)),
+        _ => None,
+    }
+}
+
+/// The Stocks page's scenes on a made-up market (`pages::stocks::picture`);
+/// every other scene: the list as it starts, nothing loaded.
+fn seed_stocks(st: &mut AppState, scene: Scene, now: f64) {
+    use crate::pages::stocks::{picture, Picture};
+    let shows = match scene {
+        Scene::Page(PageKind::Stocks) => Picture::Day,
+        Scene::StocksPicked => Picture::Year,
+        Scene::StocksSearch => Picture::Search,
+        Scene::StocksEdit => Picture::Edit,
+        _ => {
+            st.store.stocks = poni_core::stocks::Watchlist::default();
+            st.stocks = crate::state::StocksState::default();
+            st.ui.stocks = crate::pages::stocks::StocksUi::default();
+            return;
+        }
+    };
+    picture(st, shows, now);
+}
+
+/// Prayer times for its scenes: on, in Kota Jakarta (Edinburgh, picked by
+/// hand, for `PrayerWorld`), its clock 8 minutes before today's Ashar (the
+/// real lists arrive with the add-on's download; these few places are
+/// copied from them).
 fn seed_prayer(st: &mut AppState, scene: Scene, until: f64) {
-    let on = matches!(scene, Scene::Page(PageKind::Prayer) | Scene::PrayerPicker | Scene::PrayerCountdown | Scene::PrayerNotice);
+    let on = matches!(
+        scene,
+        Scene::Page(PageKind::Prayer) | Scene::PrayerPicker | Scene::PrayerCountdown | Scene::PrayerNotice | Scene::PrayerPickerWorld | Scene::PrayerWorld
+    );
     if !on {
         st.prayer = PrayerState::default();
         return;
@@ -703,18 +748,24 @@ fn seed_prayer(st: &mut AppState, scene: Scene, until: f64) {
         let list = PlaceList::parse(SAMPLE_PLACES).expect("sample places");
         st.prayer.places = Some(std::sync::Arc::new(list));
     }
+    let world = World::parse(poni_core::prayer::world::SAMPLE.into()).expect("sample world places");
     let list = st.prayer.places.clone().expect("places");
-    st.prayer.place = list.find("jakarta").cloned();
+    st.prayer.place = if scene == Scene::PrayerWorld { world.place(0) } else { list.find("jakarta").cloned() };
+    st.settings.prayer.world_place = st.prayer.place.as_ref().and_then(|p| p.world_lines.clone());
+    // The website's "ed" file, as if it had come.
+    st.prayer.cities = [("ed".to_string(), CityFile::Here(std::sync::Arc::new(world)))].into();
+    st.prayer.found = None;
+    st.settings.prayer.follow_location = scene != Scene::PrayerWorld;
     st.prayer.suggested = false;
     st.prayer.locate = Locate::Found { km: 2.0 };
     st.prayer.located_at = Some(st.unix);
-    st.prayer.picking = scene == Scene::PrayerPicker;
-    if st.prayer.picking {
-        st.prayer.query = "band".into();
-    } else {
-        st.prayer.query.clear();
-    }
-    let site = st.prayer.site().expect("Jakarta's site");
+    st.prayer.picking = matches!(scene, Scene::PrayerPicker | Scene::PrayerPickerWorld);
+    st.prayer.query = match scene {
+        Scene::PrayerPicker => "band".into(),
+        Scene::PrayerPickerWorld => "edin".into(),
+        _ => String::new(),
+    };
+    let site = st.prayer.site().expect("the place's site");
     let today = site.local_day(st.unix);
     let ashar = poni_core::prayer::day_times(&site, today).expect("today's times").ashar;
     // PONI_SELFTEST_PRAYER_AT=HH:MM: the Prayer page at that time of
@@ -724,7 +775,7 @@ fn seed_prayer(st: &mut AppState, scene: Scene, until: f64) {
         Some(h.parse::<i64>().ok()? * 3600 + m.parse::<i64>().ok()? * 60)
     });
     st.prayer.clock_shift = match at {
-        Some(secs) => today * 86_400 - i64::from(site.offset_min) * 60 + secs - st.unix,
+        Some(secs) => site.midnight(today) + secs - st.unix,
         None => ashar - 8 * 60 - st.unix,
     };
     st.prayer.handled_until = Some(st.prayer_now());
@@ -793,6 +844,8 @@ enum Scene {
     OyenzaMoneyShown,
     /// Oyenza: the day before a subscription renews.
     OyenzaBill,
+    /// The Oyenza tab signed out: what signing in brings, and Sign in.
+    OyenzaSignedOut,
     /// The Oyenza tab while a sign-in code waits for approval.
     OyenzaSignIn,
     /// The Oyenza tab right after a spend was saved (Undo showing).
@@ -841,6 +894,10 @@ enum Scene {
     PrayerCountdown,
     /// Prayer times: Ashar's time came, the adzan playing.
     PrayerNotice,
+    /// Prayer times: the place picker, "edin" typed (cities abroad).
+    PrayerPickerWorld,
+    /// Prayer times in Edinburgh, picked by hand (a city abroad, its method beside its name).
+    PrayerWorld,
     /// The Oyenza page on yesterday (a dot on Today: something new there).
     OyenzaYesterday,
     /// The Oyenza page on tomorrow's bills.
@@ -898,6 +955,33 @@ enum Scene {
     UpdateSheet,
     /// The Update sheet once Windows has the Setup: Install now, or on next start.
     UpdateReady,
+    /// Today signed in, Google Calendar and Gmail switched on: the meeting on
+    /// now with Join, then the rest of the day (an event, a flight, bills due).
+    TodayDay,
+    /// Today signed in with no app switched on for it in oyenza.app.
+    TodayNoApps,
+    /// Today signed in to a server without the day: the stat tiles, as before.
+    TodayTiles,
+    /// Today with Google Calendar switched off for Studio (Gmail on): its
+    /// logo dimmed, Turn on, and Gmail's flights and the bills.
+    TodayOff,
+    /// Today with a date ten days on clicked in the grid: the list starts there.
+    TodayPicked,
+    /// Stocks with Bank BCA picked, over a year.
+    StocksPicked,
+    /// Stocks: "Add a stock" open, "bank" typed.
+    StocksSearch,
+    /// Stocks in edit mode: remove buttons and handles.
+    StocksEdit,
+    /// A recording with Oyenza Studio Recorder: the Record page while it
+    /// records (`Page(Record)` shows its choices), then the closed island's
+    /// recording pill, recording and paused.
+    RecordLive,
+    RecordActivity,
+    RecordPaused,
+    /// The Add-ons page with the recorder installed: Screen recorder's row
+    /// (seven rows with Stocks, packed closer, the window no taller).
+    AddonsRecorder,
 }
 
 /// A later release than this build, as the update file describes one.
@@ -930,7 +1014,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 82] = [
+const SCENES: [Scene; 98] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -951,7 +1035,8 @@ const SCENES: [Scene; 82] = [
     // Last of the shelf scenes: hiding the items resets their fade-in.
     Scene::ShelfEmpty,
     Scene::Page(PageKind::Tasks),
-    Scene::Page(PageKind::Clipboard),
+    // In the Clipboard page's place (it left the app), so the numbers stay.
+    Scene::OyenzaSignedOut,
     Scene::Page(PageKind::Today),
     Scene::TabClick,
     Scene::HealthSignedOut,
@@ -990,6 +1075,8 @@ const SCENES: [Scene; 82] = [
     Scene::PrayerPicker,
     Scene::PrayerCountdown,
     Scene::PrayerNotice,
+    Scene::PrayerPickerWorld,
+    Scene::PrayerWorld,
     Scene::OyenzaYesterday,
     Scene::OyenzaTomorrow,
     Scene::OyenzaMoneyOut,
@@ -1027,6 +1114,27 @@ const SCENES: [Scene; 82] = [
     Scene::SettingsUpdate,
     Scene::UpdateSheet,
     Scene::UpdateReady,
+    // The Today page signed in: the day, no app switched on, and a server
+    // without the day (signed out, `Page(Today)` above shows the sign-in card).
+    Scene::TodayDay,
+    Scene::TodayNoApps,
+    Scene::TodayTiles,
+    Scene::TodayOff,
+    Scene::TodayPicked,
+    // The Stocks add-on: the IHSG's day, a stock's year, the search and
+    // edit mode, all on a made-up market (`stocks::sample`).
+    Scene::Page(PageKind::Stocks),
+    Scene::StocksPicked,
+    Scene::StocksSearch,
+    Scene::StocksEdit,
+    // Oyenza Studio Recorder installed: the Record page's choices and the
+    // recording, the closed island while it records and while paused, and
+    // the Add-ons page with Screen recorder's row.
+    Scene::Page(PageKind::Record),
+    Scene::RecordLive,
+    Scene::RecordActivity,
+    Scene::RecordPaused,
+    Scene::AddonsRecorder,
 ];
 
 impl Scene {
@@ -1052,6 +1160,7 @@ impl Scene {
             Scene::OyenzaMoney => "oyenza-money".into(),
             Scene::OyenzaMoneyShown => "oyenza-money-shown".into(),
             Scene::OyenzaBill => "oyenza-bill".into(),
+            Scene::OyenzaSignedOut => "page-oyenza-signed-out".into(),
             Scene::OyenzaSignIn => "page-oyenza-signin".into(),
             Scene::OyenzaSaved => "page-oyenza-saved".into(),
             Scene::HealthSignedIn => "page-health-signed-in".into(),
@@ -1077,6 +1186,8 @@ impl Scene {
             Scene::PrayerPicker => "page-prayer-picker".into(),
             Scene::PrayerCountdown => "prayer-countdown".into(),
             Scene::PrayerNotice => "prayer-notice".into(),
+            Scene::PrayerPickerWorld => "page-prayer-picker-world".into(),
+            Scene::PrayerWorld => "page-prayer-world".into(),
             Scene::OyenzaYesterday => "page-oyenza-yesterday".into(),
             Scene::OyenzaTomorrow => "page-oyenza-tomorrow".into(),
             Scene::OyenzaMoneyOut => "oyenza-money-out".into(),
@@ -1104,6 +1215,18 @@ impl Scene {
             Scene::SettingsUpdate => "page-settings-update".into(),
             Scene::UpdateSheet => "page-update-sheet".into(),
             Scene::UpdateReady => "page-update-ready".into(),
+            Scene::TodayDay => "page-today-day".into(),
+            Scene::TodayNoApps => "page-today-no-apps".into(),
+            Scene::TodayTiles => "page-today-tiles".into(),
+            Scene::TodayOff => "page-today-off".into(),
+            Scene::TodayPicked => "page-today-picked".into(),
+            Scene::StocksPicked => "page-stocks-picked".into(),
+            Scene::StocksSearch => "page-stocks-search".into(),
+            Scene::StocksEdit => "page-stocks-edit".into(),
+            Scene::RecordLive => "page-record-live".into(),
+            Scene::RecordActivity => "record-activity".into(),
+            Scene::RecordPaused => "record-paused-activity".into(),
+            Scene::AddonsRecorder => "page-addons-recorder".into(),
         }
     }
 
@@ -1113,7 +1236,7 @@ impl Scene {
             Scene::ShelfDrop | Scene::ShelfEmpty | Scene::ShelfPhone | Scene::ShelfPhoneAsk | Scene::ShelfPhoneReceive => Some(PageKind::Shelf),
             Scene::TabClick => Some(PageKind::ALL[0]),
             Scene::HealthSignedOut => Some(PageKind::Health),
-            Scene::OyenzaSignIn | Scene::OyenzaSaved | Scene::OyenzaYesterday | Scene::OyenzaTomorrow => Some(PageKind::Oyenza),
+            Scene::OyenzaSignedOut | Scene::OyenzaSignIn | Scene::OyenzaSaved | Scene::OyenzaYesterday | Scene::OyenzaTomorrow => Some(PageKind::Oyenza),
             Scene::HealthSignedIn | Scene::HealthStale => Some(PageKind::Health),
             Scene::GearClick
             | Scene::SettingsSigningIn
@@ -1136,10 +1259,37 @@ impl Scene {
             Scene::ShelfPairing | Scene::ShelfPaired | Scene::ShelfPairedPhones => Some(PageKind::Shelf),
             Scene::AddonsDownloading | Scene::AddonsOn | Scene::AddonsOffline | Scene::AddonsFailed => Some(PageKind::Addons),
             Scene::JaOffer | Scene::JaGetting => Some(PageKind::Media),
-            Scene::PrayerPicker => Some(PageKind::Prayer),
+            Scene::PrayerPicker | Scene::PrayerPickerWorld | Scene::PrayerWorld => Some(PageKind::Prayer),
             Scene::ScriptReading | Scene::ScriptRecorder => Some(PageKind::Script),
+            Scene::TodayDay | Scene::TodayNoApps | Scene::TodayTiles | Scene::TodayOff | Scene::TodayPicked => Some(PageKind::Today),
+            Scene::StocksPicked | Scene::StocksSearch | Scene::StocksEdit => Some(PageKind::Stocks),
+            Scene::RecordLive => Some(PageKind::Record),
+            Scene::AddonsRecorder => Some(PageKind::Addons),
             _ => None,
         }
+    }
+
+    /// Oyenza Studio Recorder is installed (Record by the Script page's Paste,
+    /// the Record tab, Screen recorder's row).
+    fn recorder(self) -> bool {
+        matches!(
+            self,
+            Scene::ScriptRecorder | Scene::Page(PageKind::Record) | Scene::RecordLive | Scene::RecordActivity | Scene::RecordPaused | Scene::AddonsRecorder
+        )
+    }
+
+    /// What the recorder last told the island: recording (0:42 on the page,
+    /// 12:34 on the closed island) or paused, held still for the pictures.
+    fn recording(self, now: f64) -> crate::state::RecView {
+        use poni_core::recorder::Phase;
+        let (phase, elapsed_ms) = match self {
+            Scene::RecordLive => (Phase::Recording, 42_000),
+            Scene::RecordActivity => (Phase::Recording, 754_000),
+            Scene::RecordPaused => (Phase::Paused, 754_000),
+            _ => return crate::state::RecView::default(),
+        };
+        // Sent "later" than now, so the time doesn't count on while the scene settles.
+        crate::state::RecView { phase: Some(phase), elapsed_ms, at: now + 3600.0, ..Default::default() }
     }
 
     /// Scenes that show something from Oyenza (every other one is signed out,
@@ -1160,6 +1310,11 @@ impl Scene {
                 | Scene::HealthStale
                 | Scene::SettingsSigningIn
                 | Scene::SettingsSignedIn
+                | Scene::TodayDay
+                | Scene::TodayNoApps
+                | Scene::TodayTiles
+                | Scene::TodayOff
+                | Scene::TodayPicked
         )
     }
 
@@ -1545,7 +1700,6 @@ impl SelfTest {
 
         seed_tasks(st);
         self.health = Some(sample_health(st));
-        seed_clipboard(st);
         let today = st.day_key();
         st.store.focus_sessions.insert(today, 2);
         self.seed_shelf(st);
@@ -1633,7 +1787,9 @@ impl SelfTest {
                 let steps = steps + 1;
                 let waited = now - since;
                 let timed_out = waited > self.settle_limit(app);
-                let ready = steps >= MIN_STEPS && stable >= STABLE_STEPS && !(scene == Scene::IdleEyes && mid_blink());
+                // No picture mid-blink: the eyes, and Oyen in the Oyenza tab.
+                let blinking = (scene == Scene::IdleEyes && mid_blink()) || (scene.expanded() && crate::oyen::mid_rest_move(clock::mono(), 0.3));
+                let ready = steps >= MIN_STEPS && stable >= STABLE_STEPS && !blinking;
                 if ready || timed_out {
                     self.capture(app, i, !timed_out || settled, waited);
                     self.phase = self.next_phase(i + 1, now);
@@ -1891,15 +2047,17 @@ impl SelfTest {
         st.settings.hide_in_fullscreen = scene != Scene::SettingsStayOnTop;
         // Step aside is off in the app since 0.2.6; the self-test keeps drawing what's left of it.
         st.settings.step_aside = scene != Scene::SettingsAsideStay;
-        // A later version offered, only where Settings shows it.
+        // A later version offered, only where Settings shows it. A copy from
+        // GitHub reads the update file itself, so Settings has Check now.
+        let looks = crate::state::UpdateView { looks: true, ..Default::default() };
         st.update = match scene {
             Scene::SettingsUpdate | Scene::UpdateSheet | Scene::UpdateReady => crate::state::UpdateView {
                 offer: Some(fake_release()),
                 sheet: scene != Scene::SettingsUpdate,
                 ready: scene == Scene::UpdateReady,
-                next_start: false,
+                ..looks
             },
-            _ => crate::state::UpdateView::default(),
+            _ => looks,
         };
         // A new song's title shows for its few seconds (held here).
         st.ui.peek_until = if scene == Scene::AsidePeek { now + 30.0 } else { 0.0 };
@@ -2000,6 +2158,11 @@ impl SelfTest {
             _ => None,
         };
         st.oyenza = if scene.oyenza() { fake_oyenza(st, scene, now) } else { OyenzaState::default() };
+        // Today's list starts at today, or at the date clicked ten days on.
+        st.ui.today_pick = (scene == Scene::TodayPicked).then(|| poni_core::agenda::day_num(&st.day_key()).unwrap_or(0) + 10);
+        st.ui.today_jump = st.ui.today_pick.is_some();
+        st.ui.today_scroll = 0.0;
+        st.ui.today_drawn = now;
         // Add-ons: what the page shows (settings stay as they are, so the worker downloads nothing).
         let addon = match scene {
             Scene::AddonsDownloading => AddonStatus::Downloading { done: 1_300_000, total: PRAYER_TIMES.size() },
@@ -2017,6 +2180,18 @@ impl SelfTest {
         // Script reader: on for the Script page's scenes, off (no tab) elsewhere.
         let script = scene.page() == Some(PageKind::Script);
         st.addons.insert(SCRIPT_READER.id, if script { AddonStatus::Ready } else { AddonStatus::Off });
+        // System and Health (add-ons, off by default): on for their own
+        // pages' scenes only (and Health for its goal notice).
+        let system = scene.page() == Some(PageKind::System);
+        let health = scene.page() == Some(PageKind::Health) || scene == Scene::HealthNotice;
+        let stocks = scene.page() == Some(PageKind::Stocks);
+        for (id, on) in [(SYSTEM.id, system), (HEALTH.id, health), (STOCKS.id, stocks)] {
+            st.settings.set_addon(id, on);
+            st.addons.insert(id, if on { AddonStatus::Ready } else { AddonStatus::Off });
+        }
+        seed_stocks(st, scene, now);
+        // Oyen in the Oyenza tab long since arrived: at rest in every picture.
+        st.ui.oyen_tab = Some((crate::oyen::TabMove::Arrive, f64::NEG_INFINITY));
         if scene.media_playing() {
             st.lyrics.wants_ja_readings = self.lyrics.wants_ja_readings || matches!(scene, Scene::JaOffer | Scene::JaGetting);
         }
@@ -2030,7 +2205,10 @@ impl SelfTest {
         } else {
             st.store.script.text.clear();
         }
-        st.recorder = scene == Scene::ScriptRecorder;
+        st.recorder = scene.recorder();
+        st.store.recorder_island = scene.recorder() && scene != Scene::ScriptRecorder;
+        st.rec = scene.recording(now);
+        st.settings.record = poni_core::settings::RecordSettings::default();
         st.system = fake_system(scene);
         st.settings.game_stats = scene.game();
         st.game = fake_game(scene, &mut st.system);
@@ -2259,6 +2437,20 @@ impl SelfTest {
             let wine = under_wine();
             let note = if wine { " (Wine, which can't leave a window out)" } else { "" };
             checks.push(check("script-hidden-from-capture", hidden == can || (wine && !hidden), format!("display affinity: {said}, Windows build {build:?}{note}")));
+        }
+        if matches!(scene, Scene::RecordActivity | Scene::RecordPaused) {
+            // The recording rests on the closed island, ahead of everything else.
+            let (mode, _) = app.selftest_mode();
+            let want = Mode::Activity(crate::activities::Activity::Recording);
+            checks.push(check("recording-pill", mode == want, format!("{mode:?}, want {want:?}")));
+        }
+        if matches!(scene, Scene::RecordLive | Scene::RecordActivity | Scene::RecordPaused) {
+            // The island stays out of the recorder's video: ask Windows.
+            let build = crate::window::windows_build();
+            let can = build.is_some_and(|b| b >= crate::glass::EXCLUDE_FROM_CAPTURE_BUILD);
+            let hidden = crate::window::capture_excluded(app.hwnd());
+            let wine = under_wine();
+            checks.push(check("recording-hidden-from-capture", hidden == can || (wine && !hidden), format!("display affinity: {}, Windows build {build:?}", if hidden { "left out of capture" } else { "in capture" })));
         }
 
         let ok = checks.iter().all(|c| c.ok);
@@ -2534,19 +2726,6 @@ fn sample_week(st: &AppState, days_ago: i64) -> HealthSnapshot {
         })
         .collect();
     HealthSnapshot { goal: 8000, source: HealthSource::AppleHealth, updated_at: st.unix - days_ago * 86_400 - 8 * 60, days }
-}
-
-fn seed_clipboard(st: &mut AppState) {
-    let unix = st.unix;
-    // Oldest first, so the last one ends up at the top.
-    for (k, text) in CLIPS.iter().enumerate() {
-        st.clip.push(text, unix - (CLIPS.len() - k) as i64 * 420);
-    }
-    // Pin the colour code (index counted from the newest).
-    let pin = st.clip.iter().position(|c| c.text == "#5AC8FA");
-    if let Some(i) = pin {
-        st.clip.toggle_pin(i);
-    }
 }
 
 /// Where the media-lyric scene holds the song: 1.5 s into the first sung line

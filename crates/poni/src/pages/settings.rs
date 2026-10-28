@@ -3,13 +3,16 @@
 //! The Oyenza account comes first: the Oyenza app's icon, then signing in
 //! (the code itself shows on the Oyenza page), who is signed in, and
 //! Disconnect. Under a line, what the tray menu also changes: the theme and
-//! the idle look as pickers, six switches, and Hide or Stay on top in
-//! full-screen apps.
+//! the idle look as pickers, four switches, and Hide or Stay on top in
+//! full-screen apps; and this copy's version.
 //! A change saves at once and applies the way the tray's does
-//! (`Command::SaveSettings`). While a later version is out, a last row
-//! across the page says so, with Update: that opens the Update sheet, which
-//! takes the rows' place (as the island's notice and the menu's "Update to"
-//! line do) until the island closes or Settings does.
+//! (`Command::SaveSettings`). New versions are always looked for; beside
+//! the version, Check now reads the update file at once and says what it
+//! found in its place. While a later version is out, a last row across the
+//! page says so, with Update:
+//! that opens the Update sheet, which takes the rows' place (as the island's
+//! notice and the menu's "Update to" line do) until the island closes or
+//! Settings does.
 
 use crate::activities::{text_with_dim, text_with_dim_width};
 use crate::commands::{Command, OyenzaCmd};
@@ -17,8 +20,9 @@ use crate::gfx::{TextStyle, Weight};
 use crate::icons::Icon;
 use crate::pages::PageKind;
 use crate::pill::status;
-use crate::state::{AppState, OyenzaLink};
+use crate::state::{AppState, OyenzaLink, Said};
 use crate::ui::{wid, wid_n, PillStyle, Ui, PILL_GAP, PILL_REGULAR, PILL_SMALL};
+use crate::version::VERSION;
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::oyenza;
 use poni_core::phonedrop::fmt_bytes;
@@ -26,7 +30,7 @@ use poni_core::settings::{IdleStyle, Theme};
 use poni_core::update::Release;
 
 /// Account row, a line, the pickers under their labels (or a row each on a
-/// narrow island), then the switches and choices (four rows), and the new
+/// narrow island), then the switches and choices (three rows), and the new
 /// version's row while there is one. Shorter than the System page (256),
 /// so the window keeps its size.
 const HEIGHT: f32 = SWITCHES_Y + ROWS as f32 * ROW_H;
@@ -58,6 +62,10 @@ const STACK_GAP: f32 = 16.0;
 /// The full-screen choice's picker, inside its row.
 const ROW_PICKER_H: f32 = 24.0;
 const SWITCH_W: f32 = 30.0;
+/// Check now (or its answer): the room around its words.
+const CHECK_PAD: f32 = 5.0;
+/// Its hover wash, inside the row's.
+const CHECK_H: f32 = 22.0;
 const SWITCH_H: f32 = 18.0;
 const KNOB_INSET: f32 = 2.0;
 /// Oyenza's colour, as on the Oyenza page.
@@ -77,32 +85,33 @@ fn idle_name(s: IdleStyle, eyes: &'static str) -> &'static str {
     }
 }
 
-/// The switches, as the tray menu names them (new versions: Settings only).
+/// The switches, as the tray menu names them.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Switch {
     Lyrics,
     Pronunciation,
     Sounds,
-    Clipboard,
     Autostart,
-    Updates,
 }
 
-/// What a row of the two columns holds: a switch, or the full-screen choice
-/// (the tray menu's "In full-screen apps" submenu).
+/// What a row of the two columns holds: a switch, the full-screen choice
+/// (the tray menu's "In full-screen apps" submenu), or this copy's version
+/// with Check now.
 #[derive(Clone, Copy)]
 enum Row {
     Switch(Switch, &'static str),
     Fullscreen,
+    Version,
 }
 
 const LEFT: &[Row] = &[
     Row::Switch(Switch::Lyrics, "同步歌词"),
     Row::Switch(Switch::Pronunciation, "歌词注音"),
     Row::Switch(Switch::Sounds, "操作音效"),
-    Row::Switch(Switch::Updates, "检查新版本提示"),
 ];
-const RIGHT: &[Row] = &[Row::Switch(Switch::Clipboard, "剪贴板历史"), Row::Fullscreen, Row::Switch(Switch::Autostart, "开机自启动")];
+// The version took the row of the new versions' switch (Clipboard history's
+// before it), so the columns stay even.
+const RIGHT: &[Row] = &[Row::Version, Row::Fullscreen, Row::Switch(Switch::Autostart, if cfg!(windows) { "开机自启动" } else { "登录时启动" })];
 const COLUMNS: [&[Row]; 2] = [LEFT, RIGHT];
 /// Rows in the taller column.
 const ROWS: usize = if LEFT.len() > RIGHT.len() { LEFT.len() } else { RIGHT.len() };
@@ -186,7 +195,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
 
     // Switches and the two choices, in two columns.
     let accent = st.accent;
-    let card = super::clipboard::pill_card(st, area);
+    let card = super::card::pill_card(st, area);
     for (c, column) in COLUMNS.iter().enumerate() {
         for (r, &kind) in column.iter().enumerate() {
             let row = Rect::new(cols[c], area.y + SWITCHES_Y + r as f32 * ROW_H, col_w, ROW_H);
@@ -198,6 +207,14 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
                     let id = wid_n("settings.switch", (c * ROWS + r) as u64);
                     if switch_row_on(ui, id, row, label, on, accent, card) {
                         flip(st, sw, on);
+                    }
+                }
+                Row::Version => {
+                    let check = check_slot(ui, st, row);
+                    let right = check.map_or(row.right(), |b| b.x - 10.0);
+                    text_with_dim(ui, "Version", VERSION, Rect::new(row.x, row.y, (right - row.x).max(0.0), row.h), TextStyle::body());
+                    if let Some(b) = check {
+                        draw_check(ui, st, b);
                     }
                 }
                 Row::Fullscreen => {
@@ -213,6 +230,61 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     if let Some(rel) = st.update.offer.clone() {
         draw_offer(ui, st, Rect::new(area.x, area.y + HEIGHT, area.w, ROW_H), &rel);
     }
+}
+
+/// Where Check now goes in the version's row, at its right end: while this
+/// copy looks for new versions itself and none is offered (then the last
+/// row has Update). Words with a wash on hover, not a pill.
+fn check_slot(ui: &mut Ui, st: &AppState, row: Rect) -> Option<Rect> {
+    if !st.update.looks || st.update.offer.is_some() {
+        return None;
+    }
+    let (text, _) = check_look(st.update.said, st.accent);
+    // Checking… and Up to date are words only: no room for a wash, so they
+    // take less of the label's, ending where Check now's words end.
+    let pad = if answered(st.update.said) { 0.0 } else { CHECK_PAD };
+    let w = (ui.c.measure(text, &check_text(), 300.0).0 + 2.0 * pad).ceil();
+    let right = row.right() - (CHECK_PAD - pad);
+    Some(Rect::new(right - w, row.center().y - CHECK_H / 2.0, w, CHECK_H))
+}
+
+/// Check now said something that isn't a button: checking, or up to date.
+fn answered(said: Option<Said>) -> bool {
+    matches!(said, Some(Said::Checking | Said::UpToDate))
+}
+
+/// Check now, or what it found: checking, up to date, or (it couldn't
+/// look) Try again, which looks again.
+fn draw_check(ui: &mut Ui, st: &mut AppState, b: Rect) {
+    let said = st.update.said;
+    let (text, color) = check_look(said, st.accent);
+    if answered(said) {
+        ui.c.text(text, b, &check_text().color(color).right());
+        return;
+    }
+    let resp = ui.button(wid("settings.check"), b);
+    if resp.hovered || resp.pressed {
+        ui.c.fill_rrect(b, b.h / 2.0, Color::white(if resp.pressed { 0.14 } else { 0.08 }));
+    }
+    ui.c.text(text, b, &check_text().color(color).center());
+    if resp.clicked {
+        st.update.said = Some(Said::Checking);
+        st.cmd(Command::CheckForUpdates);
+    }
+}
+
+/// Check now's words and colour for what it has said so far.
+fn check_look(said: Option<Said>, accent: Color) -> (&'static str, Color) {
+    match said {
+        None => ("立即检查", accent),
+        Some(Said::Checking) => ("正在检查…", palette::TEXT_DIM),
+        Some(Said::UpToDate) => ("已是最新版", palette::GREEN),
+        Some(Said::Failed) => ("重试", palette::ORANGE),
+    }
+}
+
+fn check_text() -> TextStyle {
+    TextStyle::footnote().weight(Weight::Semibold)
 }
 
 /// The last row while a later version is out, across the page: "Update
@@ -366,9 +438,7 @@ fn switch_on(st: &AppState, sw: Switch) -> Option<bool> {
         Switch::Lyrics => Some(s.lyrics),
         Switch::Pronunciation => Some(s.lyrics_pronunciation),
         Switch::Sounds => Some(s.sounds),
-        Switch::Clipboard => Some(s.clipboard_history),
         Switch::Autostart => st.ui.autostart,
-        Switch::Updates => Some(s.update_check),
     }
 }
 
@@ -378,9 +448,6 @@ fn flip(st: &mut AppState, sw: Switch, on: Option<bool>) {
         Switch::Lyrics => s.lyrics = !s.lyrics,
         Switch::Pronunciation => s.lyrics_pronunciation = !s.lyrics_pronunciation,
         Switch::Sounds => s.sounds = !s.sounds,
-        // Off forgets the history, pinned items included (as from the tray).
-        Switch::Clipboard => s.clipboard_history = !s.clipboard_history,
-        Switch::Updates => s.update_check = !s.update_check,
         Switch::Autostart => {
             if let Some(on) = on {
                 st.cmd(Command::SetAutostart(!on));
@@ -525,13 +592,13 @@ pub(crate) fn switch_row(ui: &mut Ui, id: u64, r: Rect, label: &str, on: Option<
     switch_row_on(ui, id, r, label, on, accent, None)
 }
 
-/// [`switch_row`] on the open card (`card` from `clipboard::pill_card`): in
+/// [`switch_row`] on the open card (`card` from `card::pill_card`): in
 /// Pill, a bottom row's hover wash follows the card's rounder corners.
 fn switch_row_on(ui: &mut Ui, id: u64, r: Rect, label: &str, on: Option<bool>, accent: Color, card: Option<(Rect, f32)>) -> bool {
     let hit = Rect::new(r.x - ROW_BLEED, r.y, r.w + 2.0 * ROW_BLEED, r.h);
     let resp = if on.is_some() { ui.button(id, hit) } else { Default::default() };
     if resp.hovered || resp.pressed {
-        super::clipboard::fill_box(ui, card, hit.inset(0.0, 1.0), 8.0, Color::white(if resp.pressed { 0.10 } else { 0.06 }));
+        super::card::fill_box(ui, card, hit.inset(0.0, 1.0), 8.0, Color::white(if resp.pressed { 0.10 } else { 0.06 }));
     }
     let sw = Rect::new(r.right() - SWITCH_W, r.center().y - SWITCH_H / 2.0, SWITCH_W, SWITCH_H);
     ui.c.text(label, Rect::new(r.x, r.y, (sw.x - 10.0 - r.x).max(0.0), r.h), &TextStyle::body());

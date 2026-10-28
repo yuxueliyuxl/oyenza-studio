@@ -11,6 +11,7 @@ pub mod bluetooth;
 pub mod clipboard;
 pub mod frames;
 pub mod fullscreen;
+pub mod cities;
 pub mod http;
 pub mod imaging;
 pub mod location;
@@ -27,6 +28,7 @@ pub mod romanize;
 mod romanize_compare;
 pub mod secret;
 pub mod sound;
+pub mod stocks;
 pub mod sysmon;
 pub mod sysstats;
 pub mod update;
@@ -44,10 +46,12 @@ pub struct Services {
     _audio: Option<audio::AudioService>,
     _bluetooth: Option<bluetooth::BluetoothService>,
     fullscreen: Option<fullscreen::FullscreenWatcher>,
-    clip: Option<clipboard::ClipboardHistory>,
     oyenza: Option<oyenza::OyenzaService>,
     pairdrop: Option<pairdrop::PairDropService>,
     addons: Option<addons::AddonService>,
+    /// Started the first time the Stocks page opens ([`Services::stocks_watch`]).
+    stocks: std::cell::OnceCell<Option<stocks::StocksService>>,
+    sink: EventSink,
 }
 
 fn started<T, E: std::fmt::Display>(name: &str, r: Result<T, E>) -> Option<T> {
@@ -70,7 +74,6 @@ impl Services {
         let audio = started("audio", audio::AudioService::start(sink.clone()));
         let bluetooth = started("bluetooth", bluetooth::BluetoothService::start(sink.clone()));
         let fullscreen = started("fullscreen", fullscreen::FullscreenWatcher::start(helper, sink.clone()));
-        let clip = started("clipboard history", clipboard::ClipboardHistory::start(sink.clone(), settings.clipboard_history));
         // Idle (no calls) until the person signs in to Oyenza from the tray.
         let oyenza = started("oyenza", oyenza::OyenzaService::start(sink.clone(), activity));
         // Asks nothing until a phone is paired.
@@ -78,13 +81,10 @@ impl Services {
         // Asleep unless an add-on is on; then it only checks the files it has.
         let on = poni_core::addons::ALL.iter().filter(|a| settings.addon_on(a.id)).map(|a| a.id).collect();
         let addons = started("add-ons", addons::AddonService::start(sink.clone(), on));
-        Self { media, lyrics, _audio: audio, _bluetooth: bluetooth, fullscreen, clip, oyenza, pairdrop, addons }
+        Self { media, lyrics, _audio: audio, _bluetooth: bluetooth, fullscreen, oyenza, pairdrop, addons, stocks: std::cell::OnceCell::new(), sink: sink.clone() }
     }
 
     pub fn stop(self, _helper: HWND) {
-        if let Some(c) = self.clip {
-            c.stop();
-        }
         if let Some(f) = self.fullscreen {
             f.stop();
         }
@@ -96,17 +96,21 @@ impl Services {
         self.addons.as_ref().map(|a| a.run(job)).is_some()
     }
 
+    /// What the Stocks page wants (`pages::stocks::watch`). Its thread starts
+    /// the first time the page opens and sleeps whenever it is closed.
+    pub fn stocks_watch(&self, w: stocks::Watch) {
+        if !w.open && self.stocks.get().is_none() {
+            return;
+        }
+        if let Some(s) = self.stocks.get_or_init(|| started("stocks", stocks::StocksService::start(self.sink.clone()))) {
+            s.set_watch(w);
+        }
+    }
+
     /// An add-on was switched on (download its files) or off (delete them).
     pub fn set_addon(&self, id: &'static str, on: bool) {
         if let Some(a) = &self.addons {
             a.set(id, on);
-        }
-    }
-
-    /// Turn clipboard history capture on or off (the setting changed).
-    pub fn set_clipboard_history(&self, on: bool) {
-        if let Some(c) = &self.clip {
-            c.set_enabled(on);
         }
     }
 

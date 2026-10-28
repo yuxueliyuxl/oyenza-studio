@@ -47,7 +47,7 @@ pub enum MonitorChoice {
 }
 
 /// Bumped when defaults change in a way existing files should pick up.
-pub const SETTINGS_VERSION: u32 = 3;
+pub const SETTINGS_VERSION: u32 = 4;
 
 fn version_zero() -> u32 {
     0
@@ -87,9 +87,8 @@ pub struct Settings {
     pub hud_volume: bool,
     pub hud_power: bool,
     pub hud_bluetooth: bool,
-    pub clipboard_history: bool,
     pub sounds: bool,
-    /// Page shown first when expanding ("media", "focus", "health", "shelf", "tasks", "clipboard", "today").
+    /// Page shown first when expanding ("media", "today", "health", "shelf", "tasks", "focus", "oyenza").
     pub start_page: String,
     /// Remember the last page instead of `start_page`.
     pub remember_page: bool,
@@ -99,6 +98,7 @@ pub struct Settings {
     pub oyenza_show_amounts: bool,
     /// Keep the System page's charts going while it's closed (a light reading
     /// of the kernel counters once a second), so they're full when it opens.
+    /// Only while the System add-on is on ([`Settings::system_history_on`]).
     pub system_history: bool,
     /// Add-ons switched on, by id (`poni_core::addons`). Ids this version
     /// doesn't know are kept, so a newer Poni's choices survive a save.
@@ -116,10 +116,30 @@ pub struct Settings {
     /// front. Its own name: the corner test build wrote `game_readout`
     /// ("peek" as its default) into the files of the people who tried it.
     pub game_peek: bool,
-    /// Tell me about new versions: read the update file a couple of minutes
-    /// after start and then twice a day (docs/updates.md), and say on the
-    /// island once when a new version is out.
-    pub update_check: bool,
+    /// The Record page's choices (Oyenza Studio Recorder).
+    pub record: RecordSettings,
+}
+
+/// What the Record page records next: its last picks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecordSettings {
+    pub target: crate::recorder::Target,
+    pub camera: bool,
+    pub microphone: bool,
+    pub system_audio: bool,
+}
+
+impl Default for RecordSettings {
+    fn default() -> Self {
+        Self { target: crate::recorder::Target::Screen, camera: false, microphone: true, system_audio: false }
+    }
+}
+
+impl RecordSettings {
+    pub fn inputs(&self) -> crate::recorder::Inputs {
+        crate::recorder::Inputs { camera: self.camera, microphone: self.microphone, system_audio: self.system_audio }
+    }
 }
 
 /// What plays when a prayer's time comes.
@@ -137,9 +157,12 @@ pub enum PrayerSound {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PrayerSettings {
-    /// The place the times are for: its id in the add-on's place list. None
-    /// until one is found or picked.
+    /// The place the times are for: its id in the add-on's place list, or
+    /// "w:lat,lng" for a city abroad. None until one is found or picked.
     pub place: Option<String>,
+    /// That city abroad as its own few lines (`prayer::World::excerpt`): its
+    /// name, country, point and clock, so its times need nothing online.
+    pub world_place: Option<String>,
     /// Let Windows' location pick the nearest place, and pick again when the
     /// PC moves. Picking a place by hand turns this off.
     pub follow_location: bool,
@@ -152,7 +175,7 @@ pub struct PrayerSettings {
 
 impl Default for PrayerSettings {
     fn default() -> Self {
-        Self { place: None, follow_location: true, sound: PrayerSound::Tone, remind_before_min: 10, pause_music: true }
+        Self { place: None, world_place: None, follow_location: true, sound: PrayerSound::Tone, remind_before_min: 10, pause_music: true }
     }
 }
 
@@ -176,7 +199,6 @@ impl Default for Settings {
             hud_volume: true,
             hud_power: true,
             hud_bluetooth: true,
-            clipboard_history: true,
             sounds: true,
             start_page: "media".into(),
             remember_page: true,
@@ -187,7 +209,7 @@ impl Default for Settings {
             prayer: PrayerSettings::default(),
             game_stats: false,
             game_peek: false,
-            update_check: true,
+            record: RecordSettings::default(),
         }
     }
 }
@@ -217,11 +239,28 @@ impl Settings {
         self.addons.insert(id.to_string(), on);
     }
 
+    /// The System add-on is on: the System tab shows.
+    pub fn system_on(&self) -> bool {
+        self.addon_on(crate::addons::SYSTEM.id)
+    }
+
+    /// The System page's readings go on while it's closed: its history
+    /// switch, and only while System itself is on.
+    pub fn system_history_on(&self) -> bool {
+        self.system_on() && self.system_history
+    }
+
     /// Has the person never switched the add-on `id` on or off? An add-on
     /// that switches itself on when first needed (Japanese readings) does so
     /// only then: one switched off by hand stays off.
     pub fn addon_unset(&self, id: &str) -> bool {
         !self.addons.contains_key(id)
+    }
+
+    /// Screen recorder: on once Oyenza Studio Recorder is `installed`, unless
+    /// the person switched it off (installing the recorder is the switch).
+    pub fn recorder_on(&self, installed: bool) -> bool {
+        installed && self.addons.get(crate::addons::SCREEN_RECORDER.id).copied().unwrap_or(true)
     }
 
     /// Clamp values a user may have hand-edited into nonsense.
@@ -236,6 +275,12 @@ impl Settings {
         // 380 ms grace read as lag; coming back while it closes reopens it).
         if self.settings_version < 3 && self.collapse_delay_ms == 380 {
             self.collapse_delay_ms = 0;
+        }
+        // v4: Clipboard history became an add-on, off by default (it left the
+        // app after 0.2.8, and its old `clipboard_history` key is dropped on
+        // the next save). A Clipboard start page opens Music.
+        if self.settings_version < 4 && self.start_page == "clipboard" {
+            self.start_page = "media".into();
         }
         self.settings_version = self.settings_version.max(SETTINGS_VERSION);
         // Step aside is no longer offered: the island stays over maximized windows.
@@ -347,6 +392,32 @@ mod tests {
     }
 
     #[test]
+    fn files_with_clipboard_history_still_load_and_drop_it() {
+        // Files from 0.2.8 and before hold the key: it's ignored, and gone after a save.
+        let s = serde_json::from_str::<Settings>(r#"{"settings_version":4,"clipboard_history":true,"theme":"oyen"}"#).unwrap().sanitized();
+        assert_eq!(s.theme, Theme::Oyen);
+        assert!(!serde_json::to_string(&s).unwrap().contains("clipboard"));
+        // A Clipboard start page from before 0.2.7 opens Music.
+        let s = serde_json::from_str::<Settings>(r#"{"settings_version":3,"start_page":"clipboard"}"#).unwrap().sanitized();
+        assert_eq!((s.start_page.as_str(), s.settings_version), ("media", SETTINGS_VERSION));
+    }
+
+    #[test]
+    fn system_history_counts_only_while_system_is_on() {
+        // Off by default, so nothing reads the counters at rest; its history
+        // switch keeps its default for when it is switched on.
+        let mut s = Settings::default();
+        assert!(!s.system_on() && s.system_history && !s.system_history_on());
+        s.set_addon(crate::addons::SYSTEM.id, true);
+        assert!(s.system_on() && s.system_history_on());
+        s.system_history = false;
+        assert!(!s.system_history_on());
+        // Files from before have no System switch: off.
+        let old: Settings = serde_json::from_str(r#"{"settings_version":4,"system_history":true}"#).unwrap();
+        assert!(!old.sanitized().system_on());
+    }
+
+    #[test]
     fn migrates_old_collapse_grace_once() {
         // Files from 0.1.7 and earlier hold the old 380 ms grace.
         let s = serde_json::from_str::<Settings>(r#"{"settings_version":2,"collapse_delay_ms":380}"#).unwrap().sanitized();
@@ -418,5 +489,19 @@ mod tests {
         let j = serde_json::to_string_pretty(&s).unwrap();
         let back: Settings = serde_json::from_str(&j).unwrap();
         assert_eq!(s, back);
+    }
+
+    #[test]
+    fn record_choices_default_and_round_trip() {
+        // Files from before the Record page get its defaults: this screen, the microphone.
+        let s: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(s.record, RecordSettings::default());
+        assert_eq!(s.record.inputs(), crate::recorder::Inputs { camera: false, microphone: true, system_audio: false });
+        let mut s = Settings::default();
+        s.record = RecordSettings { target: crate::recorder::Target::Area, camera: true, microphone: false, system_audio: true };
+        let j = serde_json::to_string(&s).unwrap();
+        assert!(j.contains(r#""record":{"target":"area","camera":true,"microphone":false,"system_audio":true}"#), "{j}");
+        let back: Settings = serde_json::from_str(&j).unwrap();
+        assert_eq!(back.record, s.record);
     }
 }

@@ -167,7 +167,7 @@ mod tests {
     fn formats() {
         let t = LocalDateTime { year: 2026, month: 10, day: 24, hour: 19, minute: 5, second: 0 };
         assert_eq!(fmt_clock(&t, true), "19:05");
-        assert_eq!(fmt_clock(&t, false), "7:05 PM");
+        assert_eq!(fmt_clock(&t, false), "下午 7:05");
         assert_eq!(fmt_duration(187.9), "3:07");
         assert_eq!(fmt_duration(3723.0), "1:02:03");
         assert_eq!(fmt_countdown(1500.0), "25:00");

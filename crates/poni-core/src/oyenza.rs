@@ -40,8 +40,9 @@ pub const ACTIVITY_EVERY_S: u64 = 15;
 /// and when the Health page opens: the phone sends them only while Oyenza is
 /// open on it.
 pub const HEALTH_EVERY_S: u64 = 15 * 60;
-/// Bills are asked for this many days ahead: Tomorrow, then Later.
-pub const BILLS_DAYS: u32 = 31;
+/// Bills are asked for this many days ahead: Tomorrow and Later on the
+/// Oyenza tab, and the five weeks on Today.
+pub const BILLS_DAYS: u32 = 35;
 /// A transaction that lands while the page is open glows this long.
 pub const GLOW_S: f64 = 60.0;
 /// Errors back off from a minute, doubling, up to this.
@@ -125,9 +126,14 @@ pub fn undo_url(id: &str) -> String {
     format!("{API}/island/note/{}", crate::urlenc::encode(id))
 }
 
-pub fn start_body(pc_name: &str, version: &str) -> String {
-    serde_json::json!({ "app": APP, "name": pc_name, "version": version }).to_string()
+/// `platform`: [`PLATFORM`], so oyenza.app shows a Mac as one (a server from
+/// before 0.2.7's leaves it out and stores every PC as Windows).
+pub fn start_body(pc_name: &str, version: &str, platform: &str) -> String {
+    serde_json::json!({ "app": APP, "name": pc_name, "version": version, "platform": platform }).to_string()
 }
+
+/// The system this app runs on, as the sign-in names it.
+pub const PLATFORM: &str = if cfg!(target_os = "macos") { "macos" } else { "windows" };
 
 pub fn token_body(device_code: &str) -> String {
     serde_json::json!({ "deviceCode": device_code }).to_string()
@@ -753,11 +759,10 @@ pub fn next_day(today: &str) -> String {
 /// The bill notice's title: "Spotify renews tomorrow", "Kartu Kredit BCA due today".
 pub fn bill_title(b: &Bill, today: &str) -> String {
     let when = due_label(&b.due, today);
-    let when = if when == "Today" || when == "Tomorrow" { when.to_lowercase() } else { format!("on {when}") };
     if b.is_card() {
-        format!("{} due {when}", b.name)
+        format!("{} 将于{}到期", b.name, when)
     } else {
-        format!("{} renews {when}", b.name)
+        format!("{} 将于{}续费", b.name, when)
     }
 }
 
@@ -914,10 +919,11 @@ mod tests {
         assert_eq!(money_url(Some("123"), "+07:00"), "https://api.oyenza.app/island/money?since=123&tz=%2B07%3A00&kinds=all");
         assert_eq!(activity_url("+07:00", None), "https://api.oyenza.app/island/activity?tz=%2B07%3A00&days=7");
         assert_eq!(activity_url("+07:00", Some("9")), "https://api.oyenza.app/island/activity?tz=%2B07%3A00&days=7&since=9");
-        assert_eq!(bills_url("-03:30"), "https://api.oyenza.app/island/bills?tz=-03%3A30&days=31");
+        assert_eq!(bills_url("-03:30"), "https://api.oyenza.app/island/bills?tz=-03%3A30&days=35");
         assert_eq!(undo_url("abc 1/2"), "https://api.oyenza.app/island/note/abc%201%2F2");
-        let b: serde_json::Value = serde_json::from_str(&start_body("DESKTOP-7Q2K", "0.1.5")).unwrap();
-        assert_eq!(b, serde_json::json!({ "app": "poni", "name": "DESKTOP-7Q2K", "version": "0.1.5" }));
+        let b: serde_json::Value = serde_json::from_str(&start_body("DESKTOP-7Q2K", "0.1.5", "windows")).unwrap();
+        assert_eq!(b, serde_json::json!({ "app": "poni", "name": "DESKTOP-7Q2K", "version": "0.1.5", "platform": "windows" }));
+        assert_eq!(PLATFORM, if cfg!(target_os = "macos") { "macos" } else { "windows" });
         let n: serde_json::Value = serde_json::from_str(&note_body("kopi \"25rb\"", "+07:00")).unwrap();
         assert_eq!(n["text"], "kopi \"25rb\"");
         assert_eq!(pc_name("  DESKTOP-7Q2K\u{0}\n "), "DESKTOP-7Q2K");
@@ -1014,18 +1020,18 @@ mod tests {
     #[test]
     fn bills_and_their_days() {
         let today = "2026-10-24"; // a Saturday
-        assert_eq!(due_label("2026-10-24", today), "Today");
-        assert_eq!(due_label("2026-10-25", today), "Tomorrow");
-        assert_eq!(due_label("2026-10-26", today), "Mon 26 Oct");
-        assert_eq!(due_label("2027-01-01", "2026-12-31"), "Tomorrow");
+        assert_eq!(due_label("2026-10-24", today), "今天");
+        assert_eq!(due_label("2026-10-25", today), "明天");
+        assert_eq!(due_label("2026-10-26", today), "10月26日 周一");
+        assert_eq!(due_label("2027-01-01", "2026-12-31"), "明天");
         assert_eq!(due_label("nonsense", today), "nonsense");
         assert_eq!(next_day("2026-02-28"), "2026-03-01");
         let spotify = bill("subscription", "Spotify", "2026-10-25", Some("Rp 54.990"));
         let card = bill("card", "Kartu Kredit BCA", "2026-10-24", None);
         let later = bill("subscription", "Cloud", "2026-10-29", Some("Rp 29.000"));
-        assert_eq!(bill_title(&spotify, today), "Spotify renews tomorrow");
-        assert_eq!(bill_title(&card, today), "Kartu Kredit BCA due today");
-        assert_eq!(bill_title(&later, today), "Cloud renews on Thu 29 Oct");
+        assert_eq!(bill_title(&spotify, today), "Spotify 将于明天续费");
+        assert_eq!(bill_title(&card, today), "Kartu Kredit BCA 将于今天到期");
+        assert_eq!(bill_title(&later, today), "Cloud 将于10月29日 周四续费");
         assert_eq!(bill_subtitles(&spotify), ("Rp 54.990".to_string(), Some("Amount hidden".to_string())));
         assert_eq!(bill_subtitles(&card), ("Open Oyenza for the amount".to_string(), None));
 
@@ -1185,7 +1191,7 @@ mod tests {
     fn the_strip_and_its_headings() {
         let today = "2026-10-24"; // a Saturday
         let labels: Vec<String> = strip(today).into_iter().map(|(_, l)| l).collect();
-        assert_eq!(labels, ["Sun", "Mon", "Tue", "Wed", "Thu", "Yesterday", "Today", "Tomorrow", "Later"]);
+        assert_eq!(labels, ["周日", "周一", "周二", "周三", "周四", "昨天", "今天", "明天", "以后"]);
         assert_eq!(strip(today)[0].0, DayPick::Past(6));
         assert_eq!(pick_date(DayPick::Past(6), today).as_deref(), Some("2026-10-18"));
         assert_eq!(pick_date(DayPick::Today, "2026-03-01").as_deref(), Some("2026-03-01"));
@@ -1206,11 +1212,11 @@ mod tests {
         assert_eq!(day_totals(&d, false), "");
         d.in_sum = 1_250_000.0;
         d.in_text = "Rp 1.250.000".into();
-        assert_eq!(day_totals(&d, true), "in Rp 1.250.000");
+        assert_eq!(day_totals(&d, true), "收入 Rp 1.250.000");
         d.out = 25_000.0;
         d.out_text = "Rp 25.000".into();
-        assert_eq!(day_totals(&d, false), "in Rp •••  ·  out Rp •••");
-        assert_eq!(day_totals(&d, true), "in Rp 1.250.000  ·  out Rp 25.000");
+        assert_eq!(day_totals(&d, false), "收入 Rp •••  ·  支出 Rp •••");
+        assert_eq!(day_totals(&d, true), "收入 Rp 1.250.000  ·  支出 Rp 25.000");
     }
 
     #[test]

@@ -63,6 +63,8 @@ pub enum OyenzaCmd {
     Refresh,
     /// The Health tab opened: the steps from the phone, now (unless just asked for).
     RefreshHealth,
+    /// Today's Try again: the day, now (unless just asked for).
+    RefreshDay,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -76,8 +78,6 @@ pub enum Command {
     DragOut(Vec<String>),
     /// Request a thumbnail for a shelf item (async; arrives as `AppEvent::ShelfThumb`).
     LoadThumb(String),
-    /// Put text on the clipboard (not re-recorded into history).
-    CopyText(String),
     /// Give the island keyboard focus for a text field.
     FocusText,
     /// The Script page's Paste: the clipboard's text, line breaks kept,
@@ -86,6 +86,13 @@ pub enum Command {
     /// The Script page's Record: Oyenza Studio Recorder records the screen
     /// the island is on (`services::recorder`).
     RecordScreen,
+    /// The Record page's Record: a recording of `settings.record`'s target
+    /// with its camera, microphone and system sound (`services::recorder`).
+    Record,
+    /// Pause, resume or stop the recording under way (the Record page).
+    RecordPause,
+    RecordResume,
+    RecordStop,
     /// Drop keyboard focus.
     BlurText,
     /// Persist `AppState::store` soon.
@@ -104,6 +111,9 @@ pub enum Command {
     Update,
     /// Install it the next time the app starts (Windows).
     InstallOnNextStart,
+    /// Settings' Check now: read the update file now, as the menu's Check
+    /// for updates… does (`AppState::update.said` takes the answer).
+    CheckForUpdates,
     /// Start/stop the 1 Hz system-stats sampler.
     WantStats(bool),
     /// Start with Windows on or off (the Settings page's switch).
@@ -120,4 +130,7 @@ pub enum Command {
     Phone(PhoneCmd),
     Pair(PairCmd),
     Oyenza(OyenzaCmd),
+    /// Get one of Prayer times' online city files ("ed", "near/55_-5"; the
+    /// answer: `AppEvent::Cities`).
+    GetCities(String),
 }

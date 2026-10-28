@@ -117,8 +117,68 @@ pub const SCRIPT_READER: Addon = Addon {
     files: &[],
 };
 
+/// System: the System page (the processor, graphics, memory, drives,
+/// network and power, and the apps using them). A tab for everyone up to
+/// 0.2.8; an add-on, off, in the versions after it, so the island's own tabs
+/// are the everyday ones. Its code is in the app, so there is nothing to download.
+/// Off, there is no System tab, and its readings never start at rest
+/// (`Settings::system_history` only counts while it is on). Show over games
+/// keeps its own switch: its readout reads the counters while a game is in
+/// front, System on or off.
+pub const SYSTEM: Addon = Addon {
+    id: "system",
+    title: "System",
+    blurb: "Live CPU, GPU, memory, drives, network and power, and the apps using them.",
+    mac_blurb: None,
+    tag: "",
+    files: &[],
+};
+
+/// Health: the Health page, today's steps against the goal and the week,
+/// which Oyenza on the phone sends once signed in (Apple Health or Health
+/// Connect). A tab for everyone up to 0.2.8; an add-on, off, in the versions
+/// after it, like System. Its code is in the app, so there is nothing to
+/// download. Off, there is no Health tab and the Oyenza worker never asks
+/// for the steps.
+pub const HEALTH: Addon = Addon {
+    id: "health",
+    title: "Health",
+    blurb: "Your steps from Oyenza on your phone: today against your goal, and your week.",
+    mac_blurb: None,
+    tag: "",
+    files: &[],
+};
+
+/// Stocks: the Stocks page, the IHSG and up to ten IDX stocks with their
+/// day's line, from oyenza.trade (`poni_core::stocks`). Its code is in the
+/// app, so there is nothing to download. Off, there is no Stocks tab; on, the
+/// prices are asked for only while its page is on screen.
+pub const STOCKS: Addon = Addon {
+    id: "stocks",
+    title: "Stocks",
+    blurb: "The IHSG and up to 10 IDX stocks from oyenza.trade, 10 minutes behind IDX.",
+    mac_blurb: None,
+    tag: "",
+    files: &[],
+};
+
+/// Screen recorder: the Record page and the recording pill, the face of
+/// Oyenza Studio Recorder (its own install, about 120 MB). Its code is in the
+/// island, so there is nothing to download. It shows on the Add-ons page once
+/// the recorder is installed, and is on from then until switched off
+/// (`Settings::recorder_on`). Off, there is no Record tab, and the recorder
+/// shows its own bar and controls.
+pub const SCREEN_RECORDER: Addon = Addon {
+    id: "recorder",
+    title: "Screen recorder",
+    blurb: "Record your screen from the island, with Oyenza Studio Recorder.",
+    mac_blurb: None,
+    tag: "",
+    files: &[],
+};
+
 /// Every add-on, in the order the Add-ons page lists them.
-pub const ALL: [&Addon; 3] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER];
+pub const ALL: [&Addon; 7] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &HEALTH, &STOCKS, &SCREEN_RECORDER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -216,9 +276,34 @@ mod tests {
     fn script_reader_is_built_in() {
         assert!(!SCRIPT_READER.downloads() && SCRIPT_READER.size() == 0);
         assert!(PRAYER_TIMES.downloads() && JAPANESE_READINGS.downloads());
-        assert_eq!(Status::Ready.line(&SCRIPT_READER, false), "On");
-        assert_eq!(Status::Off.line(&SCRIPT_READER, true), "A teleprompter under your webcam.");
+        assert_eq!(Status::Ready.line(&SCRIPT_READER, false), "已开启");
+        assert_eq!(Status::Off.line(&SCRIPT_READER, true), "在摄像头下方悬浮显示台词提词器。");
         assert_eq!(Addon::find("script"), Some(&SCRIPT_READER));
+    }
+
+    #[test]
+    fn system_and_health_are_built_in_add_ons_off_until_switched_on() {
+        for a in [&SYSTEM, &HEALTH, &STOCKS] {
+            assert!(!a.downloads() && a.size() == 0, "{}", a.id);
+            assert_eq!(Addon::find(a.id), Some(a));
+            assert_eq!(Status::Ready.line(a, false), "已开启");
+            assert!(!Settings::default().addon_on(a.id), "{} is off for everyone until they switch it on", a.id);
+        }
+        // Clipboard history left the app after 0.2.8: no add-on by that id.
+        assert_eq!(Addon::find("clipboard"), None);
+    }
+
+    #[test]
+    fn screen_recorder_is_on_once_the_recorder_is_installed() {
+        assert!(!SCREEN_RECORDER.downloads() && SCREEN_RECORDER.size() == 0);
+        assert_eq!(Addon::find("recorder"), Some(&SCREEN_RECORDER));
+        let mut s = Settings::default();
+        assert!(!s.recorder_on(false), "no recorder: nothing to show");
+        assert!(s.recorder_on(true), "installing the recorder is the switch");
+        s.set_addon(SCREEN_RECORDER.id, false);
+        assert!(!s.recorder_on(true), "switched off by hand: stays off");
+        s.set_addon(SCREEN_RECORDER.id, true);
+        assert!(s.recorder_on(true) && !s.recorder_on(false));
     }
 
     #[test]
@@ -255,18 +340,18 @@ mod tests {
         let ja = Addon::find("ja").unwrap();
         assert_eq!(ja.url(&ja.files[0]), "https://github.com/lucacadalora/oyenza-studio/releases/download/addon-ja-1/ja-readings.dic.zst");
         assert_eq!(Status::Off.line(ja, false), ja.blurb);
-        assert_eq!(Status::Ready.line(ja, false), "On · 3.8 MB on this PC");
+        assert_eq!(Status::Ready.line(ja, false), "已开启 · 占用本地空间 3.8 MB");
         // The Mac app has no Windows reason to give, and says Mac.
-        assert_eq!(Status::Off.line(ja, true), "Romaji under kanji in Japanese lyrics.");
-        assert_eq!(Status::Checking.line(ja, true), "Checking its files on this Mac");
-        assert_eq!(Status::Ready.line(ja, true), "On · 3.8 MB on this Mac");
+        assert_eq!(Status::Off.line(ja, true), "在日文歌词的汉字下方标注罗马音注音。");
+        assert_eq!(Status::Checking.line(ja, true), "正在检查Mac上的文件");
+        assert_eq!(Status::Ready.line(ja, true), "已开启 · 占用Mac空间 3.8 MB");
     }
 
     #[test]
     fn the_music_page_offers_japanese_readings_until_they_are_here() {
-        assert_eq!(ja_offer(Status::Off), Some(("Romaji for kanji: get Japanese readings (3.8 MB)".to_string(), true)));
+        assert_eq!(ja_offer(Status::Off), Some(("日文歌词罗马音注音：获取日文字典 (3.8 MB)".to_string(), true)));
         let (line, click) = ja_offer(Status::Downloading { done: 1_700_000, total: JAPANESE_READINGS.size() }).unwrap();
-        assert_eq!(line, "Getting Japanese readings · 1.7 MB of 3.8 MB");
+        assert_eq!(line, "正在下载日文字典 · 1.7 MB / 3.8 MB");
         assert!(!click);
         for s in [Status::Checking, Status::Waiting, Status::Failed] {
             assert!(ja_offer(s).is_some_and(|(_, click)| !click), "{s:?} says where it stands, nothing to click");
@@ -287,8 +372,8 @@ mod tests {
         let a = &PRAYER_TIMES;
         assert_eq!(Status::Off.line(a, false), a.blurb);
         assert_eq!(Status::Off.line(a, true), a.blurb, "no Mac line of its own: the same");
-        assert_eq!(Status::Downloading { done: 1_300_000, total: a.size() }.line(a, false), "Downloading · 1.3 MB of 1.9 MB");
-        assert_eq!(Status::Ready.line(a, false), "On · 1.9 MB on this PC");
+        assert_eq!(Status::Downloading { done: 1_300_000, total: a.size() }.line(a, false), "正在下载 · 1.3 MB / 1.9 MB");
+        assert_eq!(Status::Ready.line(a, false), "已开启 · 占用本地空间 1.9 MB");
         assert!(!Status::Off.is_on() && Status::Waiting.is_on() && Status::Failed.is_on());
         assert_eq!(Status::Downloading { done: 1, total: 4 }.progress(), Some(0.25));
         assert_eq!(Status::Downloading { done: 0, total: 0 }.progress(), Some(0.0));

@@ -9,8 +9,10 @@
 //! the way it hides that part of the island on a real MacBook. Glass is
 //! macOS's own view on the real window, so here a smoked stand-in takes its
 //! place (the smoke run's screenshots show the real one). Pill floats below
-//! the top edge, or around a notch rests attached in the menu bar's line and
-//! floats below the menu bar for what hangs under it (notch.rs).
+//! the top edge, or around a notch rests inside it and floats below the menu
+//! bar for everything else (notch.rs). Around a
+//! notch, the last picture is the Eyes look's hide and seek with the camera
+//! as it moves, a frame a row (`render_peek`).
 //!
 //! The music scenes use made-up data to test the drawing; the Mac app shows
 //! music once the media slice is built. The System page's scenes show a
@@ -27,7 +29,7 @@ use crate::notch::{self, Notch};
 use crate::pages::{self, PageKind};
 use crate::services::romanize::{self, Pronounced};
 use crate::state::{
-    AppState, Hud, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, MediaSession, NoticeAction, OyenzaLink, OyenzaState, PowerState, SysStats, VolumeState,
+    AppState, CityFile, Hud, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, MediaSession, NoticeAction, OyenzaLink, OyenzaState, PowerState, SysStats, VolumeState,
 };
 use crate::ui::{Hit, Input};
 use poni_core::addons::{Status as AddonStatus, JAPANESE_READINGS, PRAYER_TIMES};
@@ -38,7 +40,7 @@ use poni_core::lrc::parse_lrc;
 use poni_core::oyenza::{Activity, Bill, Day, Seen, Txn, WalletRef};
 use poni_core::pomodoro::{Phase, RunState};
 use poni_core::power::PowerReading;
-use poni_core::prayer::{PlaceList, Prayer};
+use poni_core::prayer::{PlaceList, Prayer, World};
 use poni_core::settings::{IdleStyle, Settings, Theme};
 use poni_core::store::Store;
 use poni_core::sysmon::{
@@ -90,13 +92,6 @@ pub const LYRICS_JA: &str = "\
 /// The Japanese readings add-on's dictionary in the repo (what the add-on's
 /// release holds), relative to the repo's root.
 const JA_DICT: &str = "crates/poni-core/data/ja-readings.dic.zst";
-const CLIPS: [&str; 5] = [
-    "Lunch: noodles from the corner place, then a walk by the river",
-    "Tracking number PX-2048-7731",
-    "#5AC8FA",
-    "https://example.com/projects/poni/notes",
-    "Meet at the north entrance at 6:15",
-];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Scene {
@@ -118,7 +113,7 @@ enum Scene {
     /// Pill's status bar look at rest.
     IdleStatus,
     /// Music with no line to sing (lyrics off): the song in Pill's pill,
-    /// art and bars beside the camera around a notch.
+    /// floating below a notch too.
     MediaNoLine,
     /// Music with the Japanese song, the Japanese readings add-on at this
     /// status: Ready reads every line; otherwise its line shows under the
@@ -133,6 +128,10 @@ enum Scene {
     PrayerPicker,
     PrayerCountdown,
     PrayerNotice,
+    /// Prayer times abroad: the place picker with "edin" typed, and the page
+    /// for Edinburgh picked by hand (its method beside its name).
+    PrayerPickerWorld,
+    PrayerWorld,
     /// Bluetooth headphones connected (the headphone pop-up).
     HeadphonesHud,
     /// Oyenza, signed in as a made-up account: its page (today's and
@@ -140,8 +139,39 @@ enum Scene {
     /// notice with the sum held back, and Settings signed in.
     Oyenza,
     OyenzaCode,
+    /// The Oyenza tab signed out: what signing in brings, and Sign in.
+    OyenzaSignedOut,
     OyenzaNotice,
     SettingsSignedIn,
+    /// The Today page signed in to Oyenza: the day from Google Calendar and
+    /// Gmail (`agenda::sample`), no app switched on, and a server without the
+    /// day (the stat tiles, as before). Signed out, `Page(Today)` above shows
+    /// the sign-in card.
+    TodayDay,
+    TodayNoApps,
+    TodayTiles,
+    /// Google Calendar switched off for Studio (Gmail on), and a date ten
+    /// days on clicked in the grid.
+    TodayOff,
+    TodayPicked,
+    /// The Stocks add-on on a made-up market (`pages::stocks::picture`):
+    /// the IHSG's day, Bank BCA's year, the search and edit mode.
+    Stocks(crate::pages::stocks::Picture),
+    /// The Update sheet for a later version: while it downloads (or where
+    /// this copy can't replace itself), with the DMG to download, and once
+    /// its app is out of the DMG and checked, Install now and Install on
+    /// next start.
+    UpdateSheet,
+    UpdateReady,
+    /// Oyenza Studio Recorder installed and heard from: the Record page's
+    /// choices, the page while it records (0:42), the closed island's
+    /// recording (12:34; around a notch its dot and time sit in the ears),
+    /// paused, and the Add-ons tab with Screen recorder's row.
+    Record,
+    RecordLive,
+    RecordActivity,
+    RecordPaused,
+    AddonsRecorder,
 }
 
 const SCENES: [Scene; 19] = [
@@ -159,7 +189,8 @@ const SCENES: [Scene; 19] = [
     Scene::HealthSignedOut,
     Scene::Page(PageKind::Media),
     Scene::Page(PageKind::Shelf),
-    Scene::Page(PageKind::Clipboard),
+    // In the Clipboard page's place (it left the app), so the numbers stay.
+    Scene::OyenzaSignedOut,
     // Slice 3: the pop-ups and the Shelf with real files.
     Scene::ChargingHud,
     Scene::LowBatteryHud,
@@ -200,6 +231,8 @@ const ADDON_SCENES: [Scene; 3] = [
 
 /// Prayer times, after the Add-ons tab.
 const PRAYER_SCENES: [Scene; 4] = [Scene::Prayer, Scene::PrayerPicker, Scene::PrayerCountdown, Scene::PrayerNotice];
+/// Prayer times abroad, after Today (so every other picture keeps its number).
+const PRAYER_WORLD_SCENES: [Scene; 2] = [Scene::PrayerPickerWorld, Scene::PrayerWorld];
 
 /// The Settings page (behind the gear), after Prayer times.
 const SETTINGS_SCENES: [Scene; 1] = [Scene::Page(PageKind::Settings)];
@@ -209,6 +242,20 @@ const HEADPHONE_SCENES: [Scene; 1] = [Scene::HeadphonesHud];
 const OYENZA_SCENES: [Scene; 4] = [Scene::Oyenza, Scene::OyenzaCode, Scene::OyenzaNotice, Scene::SettingsSignedIn];
 /// The System page's Power module on a Mac without a battery, after Oyenza.
 const POWER_SCENES: [Scene; 1] = [Scene::System(Module::Power)];
+/// The Today page signed in, after Power.
+const TODAY_SCENES: [Scene; 5] = [Scene::TodayDay, Scene::TodayNoApps, Scene::TodayTiles, Scene::TodayOff, Scene::TodayPicked];
+/// The Stocks page, after Prayer times abroad.
+const STOCKS_SCENES: [Scene; 4] = [
+    Scene::Stocks(crate::pages::stocks::Picture::Day),
+    Scene::Stocks(crate::pages::stocks::Picture::Year),
+    Scene::Stocks(crate::pages::stocks::Picture::Search),
+    Scene::Stocks(crate::pages::stocks::Picture::Edit),
+];
+/// The Update sheet, after Stocks (so every other picture keeps its number).
+const UPDATE_SCENES: [Scene; 2] = [Scene::UpdateSheet, Scene::UpdateReady];
+/// The Record page and the recording on the closed island, every theme,
+/// after the Update sheet (so every other picture keeps its number).
+const RECORD_SCENES: [Scene; 5] = [Scene::Record, Scene::RecordLive, Scene::RecordActivity, Scene::RecordPaused, Scene::AddonsRecorder];
 
 impl Scene {
     fn name(self) -> String {
@@ -241,11 +288,28 @@ impl Scene {
             Scene::PrayerPicker => "page-prayer-picker".into(),
             Scene::PrayerCountdown => "prayer-countdown".into(),
             Scene::PrayerNotice => "prayer-notice".into(),
+            Scene::PrayerPickerWorld => "page-prayer-picker-world".into(),
+            Scene::PrayerWorld => "page-prayer-world".into(),
             Scene::HeadphonesHud => "headphones-hud".into(),
             Scene::Oyenza => "page-oyenza".into(),
+            Scene::OyenzaSignedOut => "page-oyenza-signed-out".into(),
             Scene::OyenzaCode => "page-oyenza-code".into(),
             Scene::OyenzaNotice => "oyenza-notice".into(),
             Scene::SettingsSignedIn => "page-settings-signed-in".into(),
+            Scene::TodayDay => "page-today-day".into(),
+            Scene::TodayNoApps => "page-today-no-apps".into(),
+            Scene::TodayTiles => "page-today-tiles".into(),
+            Scene::TodayOff => "page-today-off".into(),
+            Scene::TodayPicked => "page-today-picked".into(),
+            Scene::Stocks(crate::pages::stocks::Picture::Day) => "page-stocks".into(),
+            Scene::Stocks(p) => format!("page-stocks-{}", format!("{p:?}").to_lowercase()),
+            Scene::UpdateSheet => "page-update-sheet".into(),
+            Scene::UpdateReady => "page-update-ready".into(),
+            Scene::Record => "page-record".into(),
+            Scene::RecordLive => "page-record-live".into(),
+            Scene::RecordActivity => "record-activity".into(),
+            Scene::RecordPaused => "record-paused-activity".into(),
+            Scene::AddonsRecorder => "page-addons-recorder".into(),
         }
     }
 }
@@ -309,11 +373,25 @@ pub fn run(dir: &str, args: &[String]) -> i32 {
             }
         }
     }
-    // The Japanese song, the Add-ons tab, Prayer times, Settings, the headphone pop-up, Oyenza and Power in every theme, after Pill's.
+    // The Japanese song, the Add-ons tab, Prayer times, Settings, the headphone pop-up, Oyenza, Power, Today signed in, Prayer times abroad, Stocks, the Update sheet and Record in every theme, after Pill's.
     let first = SCENES.len() + SYSTEM_SCENES.len() + 2 + PILL_SCENES.len();
-    for (k, scene) in JA_SCENES.into_iter().chain(ADDON_SCENES).chain(PRAYER_SCENES).chain(SETTINGS_SCENES).chain(HEADPHONE_SCENES).chain(OYENZA_SCENES).chain(POWER_SCENES).enumerate() {
+    let mut next = first;
+    let later = SETTINGS_SCENES.into_iter().chain(HEADPHONE_SCENES).chain(OYENZA_SCENES).chain(POWER_SCENES).chain(TODAY_SCENES).chain(PRAYER_WORLD_SCENES).chain(STOCKS_SCENES).chain(UPDATE_SCENES).chain(RECORD_SCENES);
+    for (k, scene) in JA_SCENES.into_iter().chain(ADDON_SCENES).chain(PRAYER_SCENES).chain(later).enumerate() {
         let path = out.join(format!("{:02}-{}{suffix}.png", first + k, scene.name()));
         match render_scene(&mut gfx, scene, theme, notch, ja.as_ref(), &path) {
+            Ok(()) => println!("render: {}", path.display()),
+            Err(e) => {
+                eprintln!("render: {}: {e}", path.display());
+                failed += 1;
+            }
+        }
+        next = first + k + 1;
+    }
+    // Around a notch, last: the Eyes look's hide and seek with the camera.
+    if let Some(n) = notch {
+        let path = out.join(format!("{next:02}-peek-frames{suffix}.png"));
+        match render_peek(&mut gfx, theme, n, &path) {
             Ok(()) => println!("render: {}", path.display()),
             Err(e) => {
                 eprintln!("render: {}: {e}", path.display());
@@ -429,6 +507,105 @@ fn render_morph(gfx: &mut Gfx, theme: Theme, notch: Option<Notch>, path: &Path) 
     crate::png::save_pbgra(path, w_px as u32, h_px as u32, &px)
 }
 
+/// The Eyes look around notch `n` as it moves (stills can't show it), a
+/// frame a row, a fifteenth of a second apart: the pointer (drawn, so each
+/// frame says what the eyes follow) wanders right of the camera and crosses
+/// over; the eyes (Oyen, in his theme) duck behind the camera and come out
+/// on its left, follow it up into the menu bar and back under the camera.
+fn render_peek(gfx: &mut Gfx, theme: Theme, n: Notch, path: &Path) -> Result<(), String> {
+    /// The pointer from the island's top centre (DIPs) at each time
+    /// (seconds), in a straight line from one to the next.
+    const WAY: [(f64, f32, f32); 7] = [
+        (0.0, 250.0, 118.0),
+        (0.6, 170.0, 70.0),
+        (1.2, -60.0, 95.0),
+        (1.5, -130.0, 105.0),
+        (2.4, -235.0, 80.0),
+        (3.0, -215.0, 14.0),
+        (3.6, -40.0, 118.0),
+    ];
+    const FPS: f64 = 15.0;
+    const CELL: (f32, f32) = (560.0, 140.0);
+    let mut st = base_state(theme);
+    st.settings.idle_style = IdleStyle::Eyes;
+    let mode = Mode::Idle;
+    let g = notch::geom(&mode, &st, n, activities::geom(&mode, &st));
+    let frames = (WAY[WAY.len() - 1].0 * FPS).round() as usize + 1;
+    let (w_px, h_px) = ((CELL.0 * SCALE).ceil() as usize, (frames as f32 * CELL.1 * SCALE).ceil() as usize);
+    let bmp = Bitmap::new(w_px, h_px, SCALE).ok_or("no bitmap context")?;
+    let look = poni_core::look::around_notch(theme);
+    let at = |t: f64| {
+        let i = WAY.iter().rposition(|w| w.0 <= t).unwrap_or(0).min(WAY.len() - 2);
+        let (a, b) = (WAY[i], WAY[i + 1]);
+        let k = ((t - a.0) / (b.0 - a.0)).clamp(0.0, 1.0) as f32;
+        Point::new(a.1 + (b.1 - a.1) * k, a.2 + (b.2 - a.2) * k)
+    };
+    for f in 0..frames {
+        let t = f as f64 / FPS;
+        st.now = NOW_MONO + t;
+        let p = at(t);
+        st.ui.peek.point(p, st.now, n.w / 2.0);
+        let (x, y) = (0.0, f as f32 * CELL.1);
+        let cx = CELL.0 / 2.0;
+        let mut island = Island::new(g);
+        island.snap(g);
+        let body = island.body_rect_at(cx);
+        gfx.set_look(&poni_core::look::CLASSIC);
+        {
+            let mut c = gfx.canvas(bmp.ctx());
+            c.translate(x, y);
+            c.clip(Rect::new(0.0, 0.0, CELL.0, CELL.1));
+            let steps = 24;
+            for i in 0..steps {
+                let k = i as f32 / (steps - 1) as f32;
+                let shade = Color::lerp(Color::hex(0x2B4F86), Color::hex(0xF0708A), k);
+                c.fill_rect(Rect::new(0.0, CELL.1 * i as f32 / steps as f32, CELL.0, CELL.1 / steps as f32 + 0.5), shade);
+            }
+            c.fill_rect(Rect::new(0.0, 0.0, CELL.0, n.h), Color::rgba(0.96, 0.96, 0.97, 0.78));
+            c.unclip();
+            c.reset_transform();
+        }
+        gfx.set_look(look);
+        {
+            let mut c = gfx.canvas(bmp.ctx());
+            c.translate(x, y);
+            c.clip(Rect::new(0.0, 0.0, CELL.0, CELL.1));
+            let shoulder = notch::shoulder(n, g.w);
+            if look.material == poni_core::look::Material::Glass {
+                crate::glass::draw_body(&mut c, body, g.r, shoulder, Some(n), false, true);
+            } else {
+                let border = Some(c.look().border);
+                c.notch(body, g.r, shoulder, palette::ISLAND, border);
+            }
+            let (mut input, mut hits) = (Input::default(), Vec::<Hit>::new());
+            let now = st.now;
+            crate::app::draw_content(&mut c, &mut input, &mut hits, &mut st, mode, body, body, None, now, Some(n));
+            c.unthemed(|c| {
+                c.fill_rrect(Rect::new(cx - n.w / 2.0, -12.0, n.w, n.h + 12.0), 10.0, Color::black(1.0));
+                pointer_arrow(c, Point::new(cx + p.x, p.y));
+            });
+            c.unclip();
+            c.reset_transform();
+        }
+    }
+    let px = bmp.pixels();
+    crate::png::save_pbgra(path, w_px as u32, h_px as u32, &px)
+}
+
+/// The Mac's arrow pointer, its tip at `tip`: black, outlined in white.
+fn pointer_arrow(c: &mut crate::gfx::Canvas, tip: Point) {
+    use poni_core::svgpath::Seg;
+    const ARROW: [(f32, f32); 7] = [(0.0, 0.0), (0.0, 16.0), (4.0, 12.3), (6.9, 18.6), (9.6, 17.4), (6.8, 11.3), (12.0, 11.3)];
+    let mut segs: Vec<Seg> = ARROW
+        .iter()
+        .enumerate()
+        .map(|(i, (dx, dy))| if i == 0 { Seg::MoveTo(tip.x + dx, tip.y + dy) } else { Seg::LineTo(tip.x + dx, tip.y + dy) })
+        .collect();
+    segs.push(Seg::Close);
+    c.path(&segs, Some(Color::white(1.0)), Some((Color::white(1.0), 2.4)));
+    c.path(&segs, Some(Color::black(1.0)), None);
+}
+
 /// The Japanese song read the way the Mac reads it: without the Japanese
 /// readings add-on (kana lines only, and the offer), then with the repo's
 /// copy of its dictionary where the add-on keeps it (every line).
@@ -468,11 +645,35 @@ fn seed_prayer(st: &mut AppState, picking: bool) -> Result<(poni_core::prayer::S
     st.prayer.located_at = Some(st.unix);
     st.prayer.picking = picking;
     st.prayer.query = if picking { "band".into() } else { String::new() };
+    // The website's "ed" file, as if it had come.
+    let ed = World::parse(poni_core::prayer::world::SAMPLE.into())?;
+    st.prayer.cities = [("ed".to_string(), CityFile::Here(std::sync::Arc::new(ed)))].into();
     let site = st.prayer.site().ok_or("no site for Kota Jakarta")?;
     let ashar = poni_core::prayer::day_times(&site, site.local_day(st.unix)).ok_or("no times today")?.ashar;
     st.prayer.clock_shift = ashar - 8 * 60 - st.unix;
     st.prayer.handled_until = Some(st.prayer_now());
     Ok((site, ashar))
+}
+
+/// Prayer times abroad: the place picker with "edin" typed (`picking`), or
+/// the page for Edinburgh, picked by hand, 8 minutes before its Ashar.
+fn seed_prayer_world(st: &mut AppState, picking: bool) -> Result<(), String> {
+    seed_prayer(st, picking)?;
+    if picking {
+        st.prayer.query = "edin".into();
+        return Ok(());
+    }
+    st.prayer.place = match st.prayer.cities.get("ed") {
+        Some(CityFile::Here(w)) => w.place(0),
+        _ => None,
+    };
+    st.settings.prayer.world_place = st.prayer.place.as_ref().and_then(|p| p.world_lines.clone());
+    st.settings.prayer.follow_location = false;
+    let site = st.prayer.site().ok_or("no site for Edinburgh")?;
+    let ashar = poni_core::prayer::day_times(&site, site.local_day(st.unix)).ok_or("no times in Edinburgh today")?.ashar;
+    st.prayer.clock_shift = ashar - 8 * 60 - st.unix;
+    st.prayer.handled_until = Some(st.prayer_now());
+    Ok(())
 }
 
 /// A few places from the add-on's list (as the Windows self-test has them).
@@ -486,6 +687,12 @@ const SAMPLE_PLACES: &str = r#"{"places":[
     {"id":"makkah","label":"Makkah","kind":"abroad","prov":"Arab Saudi","lat":21.4225,"lng":39.8261,"tz":"Asia/Riyadh","method":"ummalqura"}
 ]}"#;
 
+/// The Health add-on switched on, as its row in Add-ons does.
+fn health_on(st: &mut AppState) {
+    st.settings.set_addon(poni_core::addons::HEALTH.id, true);
+    st.addons.insert(poni_core::addons::HEALTH.id, AddonStatus::Ready);
+}
+
 fn base_state(theme: Theme) -> AppState {
     let settings = Settings { theme, sounds: false, show_media_activity: true, lyrics: true, ..Default::default() };
     let mut st = AppState::new(settings, Store::default());
@@ -496,8 +703,28 @@ fn base_state(theme: Theme) -> AppState {
     st.volume = VolumeState { level: 0.64, muted: false, known: true };
     st.power = PowerState { has_battery: true, percent: 76, charging: false, on_ac: false, saver: false };
     st.stats = SysStats { valid: true, cpu: 0.23, mem_used: 9 << 30, mem_total: 16 << 30, disk_free: 212 << 30, disk_total: 476 << 30, uptime_s: 3 * 86_400 + 4 * 3600 };
+    // Oyen in the Oyenza tab long since arrived: at rest in every picture.
+    st.ui.oyen_tab = Some((crate::oyen::TabMove::Arrive, f64::NEG_INFINITY));
     seed(&mut st);
     st
+}
+
+/// A later version than this build, with its DMG, for the Update sheet.
+fn fake_release() -> poni_core::update::Release {
+    let mut parts: Vec<u64> = crate::version::VERSION.split('.').filter_map(|p| p.parse().ok()).collect();
+    if let Some(last) = parts.last_mut() {
+        *last += 1;
+    }
+    let version = parts.iter().map(u64::to_string).collect::<Vec<_>>().join(".");
+    let repo = "https://github.com/lucacadalora/oyenza-studio/releases";
+    poni_core::update::Release {
+        date: "2026-10-27".into(),
+        headline: "Updates install themselves on a Mac".into(),
+        notes: format!("{repo}/tag/v{version}"),
+        windows: None,
+        mac: Some(poni_core::update::Download { url: format!("{repo}/download/v{version}/Oyenza-Studio-{version}-mac.dmg"), size: 4_300_000, sha256: "0".repeat(64) }),
+        version,
+    }
 }
 
 /// Oyenza for its scenes, all made up: today's and yesterday's
@@ -585,9 +812,6 @@ fn seed(st: &mut AppState) {
     if let Some(id) = done {
         st.store.tasks.toggle(id, (unix - 1800).max(day_start + 60));
     }
-    for (k, text) in CLIPS.iter().enumerate() {
-        st.clip.push(text, unix - (CLIPS.len() - k) as i64 * 420);
-    }
     let today = st.local;
     let week = [5210u32, 9120, 7480, 3960, 10230, 6840, 8412];
     let days = week
@@ -660,13 +884,22 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
     let mut hovering = false;
     let mode = match scene {
         Scene::IdleClock => Mode::Idle,
+        // Around a notch the eyes look at the pointer: down at it in the
+        // window under the menu bar (Oyen rests again a while after it
+        // moved), and over the notch while it hovers there.
         Scene::IdleEyes => {
             st.settings.idle_style = IdleStyle::Eyes;
+            if let Some(n) = notch {
+                st.ui.peek.point(Point::new(240.0, 320.0), NOW_MONO - 10.0, n.w / 2.0);
+            }
             Mode::Idle
         }
         Scene::Hover => {
             st.settings.idle_style = IdleStyle::Eyes;
             hovering = true;
+            if let Some(n) = notch {
+                st.ui.peek.point(Point::new(20.0, n.h / 2.0), NOW_MONO - 0.5, n.w / 2.0);
+            }
             Mode::Idle
         }
         Scene::Timer => {
@@ -731,6 +964,10 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             if p == PageKind::Media {
                 media(&mut st);
             }
+            // Health is an add-on, off by default: on for its own page.
+            if p == PageKind::Health {
+                health_on(&mut st);
+            }
             if p == PageKind::Focus {
                 st.pomodoro.phase = Phase::Focus;
                 st.pomodoro.run = RunState::Running { ends_at: NOW_MONO + 1104.5 };
@@ -738,8 +975,82 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             st.page = p;
             Mode::Expanded(p)
         }
+        Scene::UpdateSheet | Scene::UpdateReady => {
+            st.update = crate::state::UpdateView { offer: Some(fake_release()), sheet: true, ready: scene == Scene::UpdateReady, ..Default::default() };
+            st.page = PageKind::Settings;
+            Mode::Expanded(PageKind::Settings)
+        }
+        Scene::TodayDay | Scene::TodayNoApps | Scene::TodayTiles | Scene::TodayOff | Scene::TodayPicked => {
+            use poni_core::agenda::{day_num, sample, Answer, Source};
+            st.oyenza = fake_oyenza(&st, false);
+            let today = st.day_key();
+            let now_min = st.local.hour as i32 * 60 + st.local.minute as i32;
+            // The list starts at today, or at the date clicked ten days on.
+            st.ui.today_pick = (scene == Scene::TodayPicked).then(|| day_num(&today).unwrap_or(0) + 10);
+            st.ui.today_jump = st.ui.today_pick.is_some();
+            st.ui.today_drawn = st.now;
+            let o = &mut st.oyenza;
+            o.agenda_unix = Some(st.unix - 120);
+            match scene {
+                Scene::TodayDay | Scene::TodayPicked => {
+                    o.agenda = Some(sample(&today, now_min));
+                    o.agenda_state = crate::state::AgendaState::Ready;
+                }
+                Scene::TodayOff => {
+                    let mut a = sample(&today, now_min);
+                    a.apps.googlecalendar = Source::Off;
+                    a.events.clear();
+                    o.agenda = Some(a);
+                    o.agenda_state = crate::state::AgendaState::Ready;
+                }
+                Scene::TodayNoApps => {
+                    o.agenda = Some(Answer::none(&today));
+                    o.agenda_state = crate::state::AgendaState::Ready;
+                }
+                _ => o.agenda_state = crate::state::AgendaState::Unavailable,
+            }
+            st.page = PageKind::Today;
+            Mode::Expanded(PageKind::Today)
+        }
+        Scene::Stocks(shows) => {
+            // Stocks is an add-on, off by default: on for its own scenes.
+            st.settings.set_addon(poni_core::addons::STOCKS.id, true);
+            st.addons.insert(poni_core::addons::STOCKS.id, AddonStatus::Ready);
+            let now = st.now;
+            crate::pages::stocks::picture(&mut st, shows, now);
+            st.page = PageKind::Stocks;
+            Mode::Expanded(PageKind::Stocks)
+        }
+        Scene::Record | Scene::RecordLive | Scene::RecordActivity | Scene::RecordPaused | Scene::AddonsRecorder => {
+            use poni_core::recorder::Phase as RecPhase;
+            st.recorder = true;
+            st.store.recorder_island = true;
+            let (phase, elapsed_ms) = match scene {
+                Scene::RecordLive => (Some(RecPhase::Recording), 42_000),
+                Scene::RecordActivity => (Some(RecPhase::Recording), 754_000),
+                Scene::RecordPaused => (Some(RecPhase::Paused), 754_000),
+                _ => (None, 0),
+            };
+            // Heard at the picture's moment, so the time shows as sent.
+            st.rec = crate::state::RecView { phase, elapsed_ms, at: NOW_MONO, ..Default::default() };
+            match scene {
+                Scene::RecordActivity | Scene::RecordPaused => Mode::Activity(activities::Activity::Recording),
+                Scene::AddonsRecorder => {
+                    st.page = PageKind::Addons;
+                    Mode::Expanded(PageKind::Addons)
+                }
+                _ => {
+                    st.page = PageKind::Record;
+                    Mode::Expanded(PageKind::Record)
+                }
+            }
+        }
         Scene::Oyenza | Scene::OyenzaCode => {
             st.oyenza = fake_oyenza(&st, scene == Scene::OyenzaCode);
+            st.page = PageKind::Oyenza;
+            Mode::Expanded(PageKind::Oyenza)
+        }
+        Scene::OyenzaSignedOut => {
             st.page = PageKind::Oyenza;
             Mode::Expanded(PageKind::Oyenza)
         }
@@ -755,6 +1066,7 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             Mode::Expanded(PageKind::Settings)
         }
         Scene::HealthSignedOut => {
+            health_on(&mut st);
             st.health = None;
             st.page = PageKind::Health;
             Mode::Expanded(PageKind::Health)
@@ -764,8 +1076,8 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             Mode::Idle
         }
         Scene::MediaNoLine => {
-            // A long title: around a notch, words in the middle would show
-            // beside the camera.
+            // A long title: Pill floats it below a notch (the other themes
+            // keep words out from under the camera).
             media(&mut st);
             if let Some(m) = st.media.as_mut() {
                 m.title = "Paper Boats (Harbor Lights Session)".into();
@@ -775,6 +1087,9 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
             Mode::Activity(activities::Activity::Media)
         }
         Scene::System(m) => {
+            // System is an add-on, off by default: on for its own scenes.
+            st.settings.set_addon(poni_core::addons::SYSTEM.id, true);
+            st.addons.insert(poni_core::addons::SYSTEM.id, AddonStatus::Ready);
             // Power is a desktop Mac's: no battery, the SMC's whole-Mac watts.
             st.system = sample_system(m == Module::Power);
             st.ui.system_module = m;
@@ -808,6 +1123,11 @@ fn render_scene(gfx: &mut Gfx, scene: Scene, theme: Theme, notch: Option<Notch>,
         Scene::PrayerCountdown => {
             seed_prayer(&mut st, false)?;
             Mode::Activity(activities::Activity::Prayer)
+        }
+        Scene::PrayerPickerWorld | Scene::PrayerWorld => {
+            seed_prayer_world(&mut st, scene == Scene::PrayerPickerWorld)?;
+            st.page = PageKind::Prayer;
+            Mode::Expanded(PageKind::Prayer)
         }
         Scene::PrayerNotice => {
             let (site, ashar) = seed_prayer(&mut st, false)?;

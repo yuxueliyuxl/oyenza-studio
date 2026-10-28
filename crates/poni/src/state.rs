@@ -8,7 +8,6 @@ use crate::gfx::Image;
 use crate::icons::Icon;
 use crate::pages::PageKind;
 use poni_core::addons::Status as AddonStatus;
-use poni_core::cliphist::ClipHistory;
 use poni_core::datetime::LocalDateTime;
 use poni_core::geom::{palette, Color};
 use poni_core::health::HealthSnapshot;
@@ -16,7 +15,8 @@ use poni_core::lrc::Lyrics;
 use poni_core::oyenza::{Activity, Bill, DayPick, Saved, Seen};
 use poni_core::phonedrop::QrMatrix;
 use poni_core::pomodoro::Pomodoro;
-use poni_core::prayer::{Place, PlaceList, Site};
+use poni_core::recorder::Phase as RecPhase;
+use poni_core::prayer::{Place, PlaceList, Site, World};
 use poni_core::romanize::Ruby;
 use poni_core::settings::Settings;
 use poni_core::store::Store;
@@ -170,11 +170,18 @@ pub struct Notice {
     pub reveal: Option<String>,
 }
 
+impl Notice {
+    /// No time limit (a new version's): it stays until clicked or put away,
+    /// and lets a volume change or a game's readout show over it meanwhile.
+    pub fn stays(&self) -> bool {
+        self.until.is_infinite()
+    }
+}
+
 /// What the app knows about new versions.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UpdateView {
-    /// A later release than this copy, with a download for this system
-    /// (only while the checks are on).
+    /// A later release than this copy, with a download for this system.
     pub offer: Option<poni_core::update::Release>,
     /// Settings shows the Update sheet in place of its rows (until the
     /// island closes or the page changes).
@@ -184,6 +191,20 @@ pub struct UpdateView {
     pub ready: bool,
     /// Install on next start was picked for it.
     pub next_start: bool,
+    /// This copy reads the update file itself (not a Microsoft Store copy):
+    /// Settings has Check now.
+    pub looks: bool,
+    /// What Settings says in Check now's place since it was clicked, until
+    /// the island closes or the page changes.
+    pub said: Option<Said>,
+}
+
+/// Check now's answer in Settings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Said {
+    Checking,
+    UpToDate,
+    Failed,
 }
 
 /// A phone wants to send these files; the Shelf asks the person at the PC.
@@ -268,19 +289,28 @@ impl PhoneDrop {
 pub struct PageUiState {
     pub task_input: String,
     pub task_scroll: f32,
-    pub clip_scroll: f32,
     pub shelf_scroll: f32,
+    /// The Today page's list: how far it's scrolled (DIPs), the date clicked
+    /// in its grid (days since 1970-01-01), and when it was last drawn (mono
+    /// time; a page drawn again after a while starts at today).
+    pub today_scroll: f32,
+    pub today_pick: Option<i64>,
+    /// The next draw scrolls the list to `today_pick` (or back to today).
+    pub today_jump: bool,
+    pub today_drawn: f64,
     /// Smoothly animated lyric scroll position (line index as float).
     pub lyric_pos: f32,
     pub lyric_track: String,
-    /// Clipboard row that just got copied (index, mono time) for a "Copied" flash.
-    pub clip_flash: Option<(usize, f64)>,
     /// Volume HUD bar position, gliding toward the real level.
     pub hud_level: f32,
     /// Collapsed media pill shows the track title until this mono time.
     pub peek_until: f64,
     /// Header tab under the pointer and since when (for hover labels).
     pub tab_hover: Option<(usize, f64)>,
+    /// Oyen in the Oyenza tab: his last move of his own and when it started
+    /// (`oyen::tab`). None while the island is closed: the next opening is
+    /// his arrival.
+    pub oyen_tab: Option<(crate::oyen::TabMove, f64)>,
     /// The module the System page shows under its strip.
     pub system_module: poni_core::sysmon::Module,
     /// The last System reading had a GPU (keeps its chip while the next one is on its way).
@@ -294,6 +324,12 @@ pub struct PageUiState {
     pub autostart: Option<bool>,
     /// Oyen theme: the music notes floating up in the media pill.
     pub notes: crate::oyen::Notes,
+    /// The Eyes look on a MacBook's notch: the pointer the eyes follow and
+    /// the side of the camera they peek out from (`mac/notch.rs`).
+    #[cfg(target_os = "macos")]
+    pub peek: poni_core::peek::Peek,
+    /// The Stocks page: its scroll, search, edit mode and chart animation.
+    pub stocks: crate::pages::stocks::StocksUi,
 }
 
 /// Whether Windows lets Oyenza Studio read a game's frames. Its event tracing
@@ -344,8 +380,23 @@ pub enum OyenzaLink {
     Connected { account: String },
 }
 
-/// What the Oyenza tab and its notices show (`pages::oyenza`). Oyen's moods
-/// never read any of it: money never makes him happier or a bill sadder.
+/// Where the Today page's day stands (`OyenzaState::agenda`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AgendaState {
+    /// Not asked yet since signing in or opening.
+    #[default]
+    Waiting,
+    /// `agenda` holds the latest answer.
+    Ready,
+    /// The last ask failed; `agenda` may still hold an older answer.
+    Failed,
+    /// The server has no day for Today (from before it, or switched off there).
+    Unavailable,
+}
+
+/// What the Oyenza tab and its notices show (`pages::oyenza`), and the Today
+/// page's day (`pages::today`). Oyen's moods never read any of it: money
+/// never makes him happier or a bill sadder.
 #[derive(Clone, Debug, Default)]
 pub struct OyenzaState {
     pub link: OyenzaLink,
@@ -380,14 +431,15 @@ pub struct OyenzaState {
     pub shown: Vec<String>,
     /// Pinned before a sign-in code pinned the island open.
     pub pinned_before: Option<bool>,
+    /// The Today page's day (`poni_core::agenda`), kept in memory only, and
+    /// the unix time it came.
+    pub agenda: Option<poni_core::agenda::Answer>,
+    pub agenda_unix: Option<i64>,
+    pub agenda_state: AgendaState,
+    /// Signing in started from the Today page: back to it once connected.
+    pub from_today: bool,
 }
 
-impl OyenzaState {
-    /// The Oyenza tab shows while signing in and once signed in.
-    pub fn tab_visible(&self) -> bool {
-        self.link != OyenzaLink::Off
-    }
-}
 
 /// Where finding the PC's place stands.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -398,12 +450,74 @@ pub enum Locate {
     Asking,
     /// Picked the nearest place, this far from the PC (km).
     Found { km: f64 },
-    /// The nearest listed place is too far away to use (km).
+    /// The nearest place in either list is too far away to use (km).
     Far { km: f64 },
+    /// Away from Kemenag's places, and the cities around couldn't be looked
+    /// up (offline): the place stays as it was.
+    Offline,
     /// Windows' location is off, or not allowed for Oyenza Studio.
     Denied,
     /// Windows couldn't tell where the PC is.
     Unknown,
+}
+
+/// One of Prayer times' online city files, while it's wanted.
+#[derive(Clone, Debug)]
+pub enum CityFile {
+    Asking,
+    Here(std::sync::Arc<World>),
+    /// Offline, or the website didn't answer.
+    Failed,
+}
+
+/// The Stocks add-on's prices, kept in memory only (the list itself is
+/// `store.stocks`). Filled by `services::stocks` while the page is open.
+#[derive(Clone, Debug, Default)]
+pub struct StocksState {
+    /// The last answer, and the Unix time it came or was last confirmed unchanged.
+    pub board: Option<poni_core::stocks::Board>,
+    pub checked: Option<i64>,
+    /// Why the last ask failed, until one goes through.
+    pub trouble: Option<crate::services::stocks::Trouble>,
+    /// Every listed stock's name, once the search has asked for them.
+    pub names: Option<std::sync::Arc<poni_core::stocks::Names>>,
+    pub names_failed: bool,
+    /// Years of daily closes read this run, by code (the IHSG's too).
+    pub years: HashMap<String, poni_core::stocks::History>,
+    /// Codes whose year couldn't be read.
+    pub no_year: Vec<String>,
+}
+
+impl StocksState {
+    pub fn apply(&mut self, ev: crate::services::stocks::StocksEvent, unix: i64) {
+        use crate::services::stocks::StocksEvent;
+        match ev {
+            StocksEvent::Board(b) => {
+                self.board = Some(b);
+                self.checked = Some(unix);
+                self.trouble = None;
+            }
+            StocksEvent::Same => {
+                self.checked = Some(unix);
+                self.trouble = None;
+            }
+            StocksEvent::Failed(why) => self.trouble = Some(why),
+            StocksEvent::Names(n) => {
+                self.names = Some(n);
+                self.names_failed = false;
+            }
+            StocksEvent::NoNames => self.names_failed = true,
+            StocksEvent::History(h) => {
+                self.no_year.retain(|c| *c != h.code);
+                self.years.insert(h.code.clone(), h);
+            }
+            StocksEvent::NoHistory(code) => {
+                if !self.no_year.contains(&code) {
+                    self.no_year.push(code);
+                }
+            }
+        }
+    }
 }
 
 /// The Prayer times add-on's live state.
@@ -411,6 +525,18 @@ pub enum Locate {
 pub struct PrayerState {
     /// The add-on's place list, read once its files are in place.
     pub places: Option<std::sync::Arc<PlaceList>>,
+    /// The online city files asked for (`poni_core::prayer::world`): the
+    /// picker's, dropped when it closes, and a location's squares, dropped
+    /// once its place is found.
+    pub cities: HashMap<String, CityFile>,
+    /// A location waiting for its squares: the point (never saved) and the
+    /// files it needs.
+    pub fix: Option<(f64, f64, Vec<String>)>,
+    /// The last location that went online and the place it found: the next
+    /// one within a kilometre takes it again without asking.
+    pub last_fix: Option<(f64, f64, Option<(Place, f64)>)>,
+    /// The picker's last search: what was typed, and what it found.
+    pub found: Option<(String, Vec<Place>)>,
     /// The place the times are for: the chosen one, or the time zone's
     /// suggestion while none is chosen.
     pub place: Option<Place>,
@@ -436,6 +562,25 @@ impl PrayerState {
     }
 }
 
+/// What Oyenza Studio Recorder last said about its recording
+/// (`poni_core::recorder::Message::State`).
+#[derive(Clone, Debug, Default)]
+pub struct RecView {
+    /// None: no recording heard of (none yet, or the last one ended).
+    pub phase: Option<RecPhase>,
+    /// Its length when the message came (paused time left out)...
+    pub elapsed_ms: u64,
+    /// ...and when that was (mono seconds), to count on from while it records.
+    pub at: f64,
+    /// The recorder's window, to notice a recorder gone mid-recording (0: none).
+    pub sender: isize,
+    /// Record was pressed and the recorder hasn't answered yet: the page says
+    /// "Opening the recorder" until this time (mono seconds).
+    pub opening_until: f64,
+    /// Why the last start failed, shown on the Record page until a time.
+    pub error: Option<(String, f64)>,
+}
+
 pub struct AppState {
     pub settings: Settings,
     pub store: Store,
@@ -450,7 +595,6 @@ pub struct AppState {
     pub power: PowerState,
     pub hud: Option<Hud>,
     pub notice: Option<Notice>,
-    pub clip: ClipHistory,
     pub stats: SysStats,
     /// The System page's readings and their last minute (empty while it's closed).
     pub system: poni_core::sysmon::Monitor,
@@ -497,9 +641,14 @@ pub struct AppState {
     /// Whether Windows leaves the island out of screen capture while the
     /// Script page shows (None = not asked yet, or not on Windows).
     pub script_hidden: Option<bool>,
-    /// Oyenza Studio Recorder is installed, so the Script page shows Record.
-    /// Asked each time the page comes on screen, never at rest.
+    /// Oyenza Studio Recorder is installed: the Script page shows Record, and
+    /// the Record tab can show (`record_on`). Asked at start, as the island
+    /// opens and when the recorder writes, never at rest.
     pub recorder: bool,
+    /// The Stocks add-on's prices (its list: `store.stocks`).
+    pub stocks: StocksState,
+    /// The recorder's recording, as it last told the island.
+    pub rec: RecView,
     /// Side effects requested during the frame.
     pub cmds: Vec<Command>,
 }
@@ -542,7 +691,6 @@ impl AppState {
             power: PowerState::default(),
             hud: None,
             notice: None,
-            clip: ClipHistory::default(),
             stats: SysStats::default(),
             system: poni_core::sysmon::Monitor::default(),
             game: GameState::default(),
@@ -567,17 +715,29 @@ impl AppState {
             script_note: None,
             script_hidden: None,
             recorder: false,
+            stocks: StocksState::default(),
+            rec: RecView::default(),
             cmds: Vec::new(),
         };
+        // A list from a hand-edited file keeps to codes, each once, ten at most.
+        st.store.stocks.tidy();
         // On ones start by checking their files (the worker reports back);
         // one without files is ready at once.
         for a in poni_core::addons::ALL {
             let on = st.settings.addon_on(a.id);
             st.addons.insert(a.id, if !on { AddonStatus::Off } else if a.downloads() { AddonStatus::Checking } else { AddonStatus::Ready });
         }
-        // Last open on the Script page, since switched off: open where a new
-        // island does.
-        if st.page == PageKind::Script && !st.script_on() {
+        // Last open on the Script, System, Health or Stocks page, since
+        // switched off: open where a new island does.
+        let off = match st.page {
+            PageKind::Script => !st.script_on(),
+            PageKind::System => !st.system_on(),
+            PageKind::Health => !st.health_on(),
+            PageKind::Stocks => !st.stocks_on(),
+            PageKind::Record => !st.record_on(),
+            _ => false,
+        };
+        if off {
             st.page = PageKind::ALL[0];
         }
         st
@@ -588,9 +748,58 @@ impl AppState {
         self.addons.get(id).copied().unwrap_or(AddonStatus::Off)
     }
 
+    /// Screen recorder is on (`Settings::recorder_on`): the Record tab shows
+    /// and the island answers the recorder, which then shows no bar or
+    /// controls of its own (`WM_COPYDATA` on Windows, a message port on the Mac).
+    pub fn record_on(&self) -> bool {
+        self.settings.recorder_on(self.recorder_ready())
+    }
+
+    /// The recorder is installed and has written to the island before
+    /// (`Store::recorder_island`): it understands the Record page.
+    pub fn recorder_ready(&self) -> bool {
+        self.recorder && self.store.recorder_island
+    }
+
+    /// A recording is under way: starting, recording, paused or being saved.
+    pub fn rec_live(&self) -> bool {
+        self.rec.phase.is_some_and(|p| p != RecPhase::Idle)
+    }
+
+    /// The recording's length now, in seconds (paused time left out).
+    pub fn rec_elapsed(&self) -> f64 {
+        let at_message = self.rec.elapsed_ms as f64 / 1000.0;
+        if self.rec.phase == Some(RecPhase::Recording) {
+            at_message + (self.now - self.rec.at).max(0.0)
+        } else {
+            at_message
+        }
+    }
+
+    /// Seconds until the recording's time shows its next second, while it runs.
+    pub fn rec_next_second(&self) -> Option<f64> {
+        (self.rec.phase == Some(RecPhase::Recording)).then(|| 1.0 - self.rec_elapsed().fract())
+    }
+
     /// The Script reader add-on is on: the Script tab shows.
     pub fn script_on(&self) -> bool {
         self.addon(poni_core::addons::SCRIPT_READER.id) == AddonStatus::Ready
+    }
+
+    /// The System add-on is on: the System tab shows.
+    pub fn system_on(&self) -> bool {
+        self.addon(poni_core::addons::SYSTEM.id) == AddonStatus::Ready
+    }
+
+    /// The Health add-on is on: the Health tab shows and the steps are asked for.
+    pub fn health_on(&self) -> bool {
+        self.addon(poni_core::addons::HEALTH.id) == AddonStatus::Ready
+    }
+
+    /// The Stocks add-on is on: the Stocks tab shows (its prices are asked
+    /// for only while the page is on screen).
+    pub fn stocks_on(&self) -> bool {
+        self.addon(poni_core::addons::STOCKS.id) == AddonStatus::Ready
     }
 
     /// Prayer times is on and its places are read: the tab and reminders run.

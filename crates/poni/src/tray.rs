@@ -2,6 +2,7 @@
 
 use crate::events::WM_APP_TRAY;
 use crate::state::OyenzaLink;
+use crate::updates::UpdateLine;
 use poni_core::settings::{IdleStyle, Settings, Theme};
 use windows::core::{Result, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
@@ -54,7 +55,6 @@ impl Tray {
 pub enum MenuCmd {
     ToggleIdleStyle(IdleStyle),
     SetTheme(Theme),
-    ToggleClipboard,
     ToggleSystemHistory,
     ToggleLyrics,
     TogglePronunciation,
@@ -85,6 +85,8 @@ pub enum MenuCmd {
     RecordScreen,
     /// "Update to Oyenza Studio 0.2.5…" (`crate::updates`).
     Update,
+    /// "Check for updates…": read the update file now (`crate::updates`).
+    CheckForUpdates,
     Quit,
 }
 
@@ -112,8 +114,9 @@ fn idle_label(s: IdleStyle, theme: Theme) -> &'static str {
     }
 }
 
-/// `update`: a later version the update file offers, if any.
-pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, recorder: bool, update: Option<&str>) -> Vec<MenuItem> {
+/// `update`: a later version the update file offers, or Check for updates…
+/// (`crate::updates::menu_line`).
+pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, recorder: bool, update: UpdateLine) -> Vec<MenuItem> {
     // The look the theme draws is the one checked: outside Pill, Status shows the clock.
     let shown = crate::pill::status::shown(s.theme, s.idle_style);
     let style = |st: IdleStyle| item(idle_label(st, s.theme), MenuCmd::ToggleIdleStyle(st), shown == st);
@@ -130,8 +133,6 @@ pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, recorder: boo
         item("歌词注音 (拼音 / 罗马音 / 韩文注音)", MenuCmd::TogglePronunciation, s.lyrics_pronunciation),
         apple_music_menu(),
         oyenza_menu(s, oyenza),
-        item("剪贴板历史", MenuCmd::ToggleClipboard, s.clipboard_history),
-        item("保留系统监控历史数据", MenuCmd::ToggleSystemHistory, s.system_history),
         item("操作音效", MenuCmd::ToggleSounds, s.sounds),
         MenuItem::Sub {
             label: "全屏应用场景".into(),
@@ -154,14 +155,27 @@ pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, recorder: boo
         MenuItem::Separator,
         item("退出 Oyenza Studio", MenuCmd::Quit, false),
     ];
+    // Only while the System add-on is on: its page's history, under Sounds.
+    if s.system_on() {
+        let at = items.iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::ToggleSounds, .. })).unwrap_or(items.len());
+        items.insert(at, item("保留系统监控历史数据", MenuCmd::ToggleSystemHistory, s.system_history));
+    }
     // Only once the separate recorder app is installed: until then the
     // island doesn't mention recording at all.
     if recorder {
         items.splice(0..0, [item("录制此屏幕", MenuCmd::RecordScreen, false), MenuItem::Separator]);
     }
-    // A new version first, until it is installed.
-    if let Some(v) = update {
-        items.splice(0..0, [item(&format!("更新至 Oyenza Studio {v}…"), MenuCmd::Update, false), MenuItem::Separator]);
+    match update {
+        // A new version first, until it is installed.
+        UpdateLine::Offer(v) => {
+            items.splice(0..0, [item(&format!("更新至 Oyenza Studio {v}…"), MenuCmd::Update, false), MenuItem::Separator]);
+        }
+        // Otherwise a look on request, under the version line.
+        UpdateLine::Check => {
+            let at = items.iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::About, .. })).map_or(items.len(), |i| i + 1);
+            items.insert(at, item("检查更新…", MenuCmd::CheckForUpdates, false));
+        }
+        UpdateLine::None => {}
     }
     items
 }
@@ -258,8 +272,8 @@ mod tests {
     use super::*;
 
     fn fullscreen_choices(s: &Settings) -> Vec<(String, MenuCmd, bool)> {
-        let items = menu_items(s, false, &OyenzaLink::Off, false, None);
-        let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "In full-screen apps")) else {
+        let items = menu_items(s, false, &OyenzaLink::Off, false, UpdateLine::None);
+        let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "全屏应用场景")) else {
             panic!("no full-screen submenu");
         };
         items
@@ -273,7 +287,7 @@ mod tests {
 
     #[test]
     fn the_menu_says_which_version_this_is() {
-        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, false, None);
+        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, false, UpdateLine::None);
         let labels: Vec<(String, MenuCmd)> = items
             .into_iter()
             .filter_map(|i| match i {
@@ -292,28 +306,60 @@ mod tests {
     #[test]
     fn a_new_version_comes_first_until_it_is_installed() {
         let s = Settings::default();
-        let first = |update: Option<&str>| match menu_items(&s, false, &OyenzaLink::Off, true, update).into_iter().next() {
+        let first = |update: UpdateLine| match menu_items(&s, false, &OyenzaLink::Off, true, update).into_iter().next() {
             Some(MenuItem::Item { label, cmd, .. }) => Some((label, cmd)),
             _ => None,
         };
-        assert_eq!(first(Some("0.2.5")), Some(("Update to Oyenza Studio 0.2.5…".to_string(), MenuCmd::Update)));
-        assert_eq!(first(None).map(|(_, cmd)| cmd), Some(MenuCmd::RecordScreen));
+        assert_eq!(first(UpdateLine::Offer("0.2.5".into())), Some(("更新至 Oyenza Studio 0.2.5…".to_string(), MenuCmd::Update)));
+        assert_eq!(first(UpdateLine::None).map(|(_, cmd)| cmd), Some(MenuCmd::RecordScreen));
+        assert_eq!(first(UpdateLine::Check).map(|(_, cmd)| cmd), Some(MenuCmd::RecordScreen));
+    }
+
+    #[test]
+    fn check_for_updates_sits_under_the_version_line() {
+        let cmds = |update: UpdateLine| -> Vec<MenuCmd> {
+            menu_items(&Settings::default(), false, &OyenzaLink::Off, false, update)
+                .into_iter()
+                .filter_map(|i| match i {
+                    MenuItem::Item { cmd, .. } => Some(cmd),
+                    _ => None,
+                })
+                .collect()
+        };
+        let items = cmds(UpdateLine::Check);
+        let about = items.iter().position(|c| *c == MenuCmd::About).expect("no About line");
+        assert_eq!(&items[about..], &[MenuCmd::About, MenuCmd::CheckForUpdates, MenuCmd::Quit]);
+        // Not while a version is on offer (its line comes first), nor with the checks off.
+        assert!(!cmds(UpdateLine::Offer("0.2.5".into())).contains(&MenuCmd::CheckForUpdates));
+        assert!(!cmds(UpdateLine::None).contains(&MenuCmd::CheckForUpdates));
+    }
+
+    #[test]
+    fn system_history_is_in_the_menu_only_while_system_is_on() {
+        let has = |s: &Settings| menu_items(s, false, &OyenzaLink::Off, false, UpdateLine::None).iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::ToggleSystemHistory, .. }));
+        let mut s = Settings::default();
+        assert_eq!(has(&s), None, "System is off by default");
+        s.set_addon(poni_core::addons::SYSTEM.id, true);
+        let at = has(&s).expect("no System history item");
+        // Right above Sounds, where it always was.
+        let items = menu_items(&s, false, &OyenzaLink::Off, false, UpdateLine::None);
+        assert!(matches!(&items[at + 1], MenuItem::Item { cmd: MenuCmd::ToggleSounds, .. }));
     }
 
     #[test]
     fn record_this_screen_shows_only_with_the_recorder() {
         let s = Settings::default();
-        let first = |recorder: bool| match menu_items(&s, false, &OyenzaLink::Off, recorder, None).into_iter().next() {
+        let first = |recorder: bool| match menu_items(&s, false, &OyenzaLink::Off, recorder, UpdateLine::None).into_iter().next() {
             Some(MenuItem::Item { label, cmd, .. }) => Some((label, cmd)),
             _ => None,
         };
-        assert_eq!(first(true), Some(("Record this screen".to_string(), MenuCmd::RecordScreen)));
+        assert_eq!(first(true), Some(("录制此屏幕".to_string(), MenuCmd::RecordScreen)));
         assert_ne!(first(false).map(|(_, cmd)| cmd), Some(MenuCmd::RecordScreen));
     }
 
     fn idle_choices(s: &Settings) -> Vec<(String, bool)> {
-        let items = menu_items(s, false, &OyenzaLink::Off, false, None);
-        let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "Idle look")) else {
+        let items = menu_items(s, false, &OyenzaLink::Off, false, UpdateLine::None);
+        let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "待机形态")) else {
             panic!("no idle look submenu");
         };
         items
@@ -329,15 +375,15 @@ mod tests {
     fn status_bar_is_listed_only_in_the_pill_theme() {
         let pill = Settings { theme: Theme::Pill, idle_style: IdleStyle::Status, ..Settings::default() };
         let labels: Vec<String> = idle_choices(&pill).into_iter().map(|c| c.0).collect();
-        assert_eq!(labels, ["Clock", "Eyes", "Minimal", "Hidden until hover", "Status bar"]);
-        assert_eq!(idle_choices(&pill).last(), Some(&("Status bar".to_string(), true)));
+        assert_eq!(labels, ["时钟", "眼睛", "极简", "隐藏（悬停显示）", "状态栏"]);
+        assert_eq!(idle_choices(&pill).last(), Some(&("状态栏".to_string(), true)));
         // Another theme draws the clock for the status bar: Clock is checked,
         // and Status comes back with Pill.
         for theme in [Theme::Classic, Theme::Oyen, Theme::Glass] {
             let s = Settings { theme, ..pill.clone() };
             let choices = idle_choices(&s);
             assert_eq!(choices.len(), 4, "{theme:?}");
-            assert_eq!(choices[0], ("Clock".to_string(), true), "{theme:?}");
+            assert_eq!(choices[0], ("时钟".to_string(), true), "{theme:?}");
             assert!(choices.iter().skip(1).all(|c| !c.1), "{theme:?}");
         }
     }
@@ -345,8 +391,8 @@ mod tests {
     #[test]
     fn start_with_windows_follows_the_full_screen_submenu() {
         // Over maximized windows (Step aside) is gone: nothing sits between them.
-        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, false, None);
-        let fs = items.iter().position(|i| matches!(i, MenuItem::Sub { label, .. } if label == "In full-screen apps")).expect("full-screen submenu");
+        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, false, UpdateLine::None);
+        let fs = items.iter().position(|i| matches!(i, MenuItem::Sub { label, .. } if label == "全屏应用场景")).expect("full-screen submenu");
         assert!(matches!(items.get(fs + 1), Some(MenuItem::Item { cmd: MenuCmd::ToggleAutostart, .. })));
     }
 
@@ -359,10 +405,10 @@ mod tests {
             assert_eq!(
                 choices,
                 vec![
-                    ("Hide".to_string(), MenuCmd::SetHideFullscreen(true), hide),
-                    ("Stay on top".to_string(), MenuCmd::SetHideFullscreen(false), !hide),
-                    ("Show FPS, GPU and CPU over games".to_string(), MenuCmd::ToggleGameStats, false),
-                    ("Only for a few seconds (no added delay)".to_string(), MenuCmd::ToggleGamePeek, false),
+                    ("自动隐藏".to_string(), MenuCmd::SetHideFullscreen(true), hide),
+                    ("始终保持置顶".to_string(), MenuCmd::SetHideFullscreen(false), !hide),
+                    ("游戏中显示帧率、GPU 和 CPU".to_string(), MenuCmd::ToggleGameStats, false),
+                    ("仅显示数秒（无附加延迟）".to_string(), MenuCmd::ToggleGamePeek, false),
                 ]
             );
         }

@@ -8,8 +8,8 @@
 //! phone), so the tests can drive them over real sockets.
 
 pub mod addons;
+pub mod agenda;
 pub mod applemusic;
-pub mod cliphist;
 pub mod datetime;
 pub mod frames;
 pub mod frametime;
@@ -20,10 +20,12 @@ pub mod health;
 pub mod look;
 pub mod lrc;
 pub mod lrclib;
+pub mod mediaremote;
 pub mod nowplaying;
 pub mod oyen;
 pub mod oyenza;
 pub mod pairdrop;
+pub mod peek;
 pub mod phonedrop;
 pub mod pomodoro;
 pub mod power;
@@ -35,6 +37,7 @@ pub mod settings;
 pub mod sha256;
 pub mod shelf;
 pub mod spring;
+pub mod stocks;
 pub mod store;
 pub mod svgpath;
 pub mod sysmon;

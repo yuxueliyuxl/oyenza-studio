@@ -67,6 +67,11 @@ const DROP_PEEK_EVERY_S: f64 = 30.0;
 const HOTKEY_PEEK: i32 = 1;
 /// Alt+Shift+S pauses and resumes the Script page's reading from any app.
 const HOTKEY_SCRIPT: i32 = 2;
+/// Record pressed: how long the Record page says "Opening the recorder"
+/// without word from it (a cold start of the recorder takes a few seconds).
+const REC_OPENING_S: f64 = 15.0;
+/// How long the Record page shows why a recording didn't start.
+const REC_ERROR_S: f64 = 8.0;
 /// Raises that follow a new foreground window, and their spacing.
 const RAISE_REPEATS: u8 = 4;
 const RAISE_INTERVAL_MS: u32 = 500;
@@ -220,6 +225,36 @@ pub fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
     r
 }
 
+thread_local! {
+    /// Recorder messages that came while the app was busy (re-entered): the
+    /// next `WM_APP_EVENT` hands them over.
+    static REC_MISSED: RefCell<Vec<(poni_core::recorder::Message, isize)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// A message from Oyenza Studio Recorder (`poni_core::recorder`), read while
+/// it waits in `SendMessageTimeout`: true tells it the island shows the
+/// recording (or its Record page), so it keeps its own bar and controls
+/// hidden; false, that it should show them.
+unsafe fn recorder_message(hwnd: HWND, wp: WPARAM, lp: LPARAM) -> bool {
+    use poni_core::recorder::{parse_message, COPYDATA_ID, MESSAGE_MAX};
+    let Some(cds) = (lp.0 as *const windows::Win32::System::DataExchange::COPYDATASTRUCT).as_ref() else { return false };
+    let len = cds.cbData as usize;
+    if cds.dwData != COPYDATA_ID || cds.lpData.is_null() || len > MESSAGE_MAX {
+        return false;
+    }
+    // The bytes are the sender's only until this returns: read them now.
+    let Some(m) = parse_message(std::slice::from_raw_parts(cds.lpData as *const u8, len)) else { return false };
+    let sender = wp.0 as isize;
+    match with_app(|app| app.on_recorder_message(m.clone(), sender)) {
+        Some(taken) => taken,
+        None => {
+            REC_MISSED.with(|q| q.borrow_mut().push((m, sender)));
+            let _ = PostMessageW(hwnd, WM_APP_EVENT, WPARAM(0), LPARAM(0));
+            false
+        }
+    }
+}
+
 /// Remember a message that couldn't be handled because the app was borrowed.
 fn note_missed(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
     match msg {
@@ -241,6 +276,9 @@ fn note_missed(msg: u32, wp: WPARAM, lp: LPARAM) -> bool {
 }
 
 unsafe extern "system" fn island_wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+    if msg == WM_COPYDATA {
+        return LRESULT(recorder_message(hwnd, wp, lp) as isize);
+    }
     let mut deferred = Vec::new();
     let res = with_app(|app| app.handle_island(msg, wp, lp, &mut deferred));
     for d in deferred {
@@ -283,10 +321,20 @@ fn run_deferred(d: Deferred) {
             with_app(|app| app.request_frame());
         }
         Deferred::Menu(pt) => {
-            let Some((helper, items)) = with_app(|app| (app.helper, tray::menu_items(&app.st.settings, app.st.pinned, &app.st.oyenza.link, crate::services::recorder::installed(), app.st.update.offer.as_ref().map(|r| r.version.as_str())))) else { return };
-            if let Some(cmd) = tray::show_menu(helper, pt, &items) {
-                with_app(|app| app.on_menu(cmd));
-            }
+            let Some((helper, items)) = with_app(|app| {
+                // Right-clicked on the open island (the tray's menu leaves it as it is).
+                app.menu_open = app.expanded && app.hovering;
+                (app.helper, tray::menu_items(&app.st.settings, app.st.pinned, &app.st.oyenza.link, crate::services::recorder::installed(), crate::updates::menu_line(&app.st, app.updater.is_some())))
+            }) else {
+                return;
+            };
+            let cmd = tray::show_menu(helper, pt, &items);
+            with_app(|app| {
+                app.menu_closed();
+                if let Some(cmd) = cmd {
+                    app.on_menu(cmd);
+                }
+            });
         }
     }
 }
@@ -357,7 +405,8 @@ pub struct App {
     shown: bool,
     stats_on: bool,
     /// The System page's sampler thread: from the start while its history is
-    /// kept (`Settings::system_history`), else from the first time the page opens.
+    /// kept (`Settings::system_history_on`: System on, its history kept),
+    /// else from the first time the page opens or a game's readout needs it.
     sysmon: Option<services::sysmon::SysMon>,
     /// The System page is open (its readings come each second).
     sysmon_on: bool,
@@ -365,6 +414,10 @@ pub struct App {
     sysmon_rest: poni_core::sysmon::Rest,
     /// The Oyenza page is on screen: its day list stays live (`services::oyenza`).
     oyenza_watch: bool,
+    /// The Stocks page was on screen at the last look (`set_stocks_watch`).
+    stocks_open: bool,
+    /// The Today page is on screen: the worker asks for the day (`services::oyenza`).
+    today_watch: bool,
     /// Show over games: the game's frames, counted while the readout shows.
     frames: Option<services::frames::Frames>,
     /// The process whose frames count (the full-screen app).
@@ -384,6 +437,8 @@ pub struct App {
     script_hotkey: bool,
     /// The Script page has asked for the island to stay out of screen capture.
     script_excluded: bool,
+    /// A recording has asked for the island to stay out of screen capture.
+    rec_excluded: bool,
     /// A reading held the island open at the last tick.
     script_held: bool,
     /// The Script page was on screen at the last tick.
@@ -394,8 +449,6 @@ pub struct App {
     tray: Option<Tray>,
     taskbar_created_msg: u32,
     selftest: Option<selftest::SelfTest>,
-    /// Text we put on the clipboard ourselves (don't record it again).
-    own_clip: Option<String>,
     exit_code: i32,
     /// Settings as last written to disk (to diff page-made changes).
     saved_settings: Settings,
@@ -425,6 +478,10 @@ pub struct App {
     collapse_due: bool,
     /// When the pointer last closed the island by leaving it.
     left_at: f64,
+    /// The right-click menu is open over the open island. The pointer on
+    /// the menu has left the island as far as Windows is concerned, so the
+    /// menu holds the island open until it closes.
+    menu_open: bool,
     /// Phone drop's web server while the Shelf's phone panel is open.
     phone: Option<services::phonedrop::PhoneDrop>,
     /// The Shelf paths last handed to it (to notice changes).
@@ -517,6 +574,8 @@ impl App {
         island.set_floating(pill::on(st.settings.theme).then_some(pill::TOP_GAP));
         let clock = FrameClock::start(SendHwnd::new(hwnd), monitor.handle);
         let taskbar_created_msg = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
+        // Oyenza Studio Recorder installed: the Record tab can show (one registry read).
+        st.recorder = selftest_dir.is_none() && services::recorder::installed();
         let selftest = selftest_dir.map(selftest::SelfTest::new);
         let saved_settings = st.settings.clone();
         Ok(Self {
@@ -566,6 +625,8 @@ impl App {
             sysmon_on: false,
             sysmon_rest: poni_core::sysmon::Rest::default(),
             oyenza_watch: false,
+            stocks_open: false,
+            today_watch: false,
             frames: None,
             game_pid: None,
             game_peek_until: 0.0,
@@ -574,13 +635,13 @@ impl App {
             peek_hotkey: false,
             script_hotkey: false,
             script_excluded: false,
+            rec_excluded: false,
             script_held: false,
             script_shown: false,
             icon_wait: HashSet::new(),
             tray: None,
             taskbar_created_msg,
             selftest,
-            own_clip: None,
             exit_code: 0,
             saved_settings,
             settings_writable,
@@ -598,6 +659,7 @@ impl App {
             hover_arm: None,
             collapse_due: false,
             left_at: f64::NEG_INFINITY,
+            menu_open: false,
             phone: None,
             phone_offer: Vec::new(),
             pair_offer: None,
@@ -616,7 +678,7 @@ impl App {
             self.sync_top_watch();
             self.st.paired = self.services.as_ref().map(|s| paired_phones(s.pairs())).unwrap_or_default();
             self.sync_pair_offer();
-            if self.st.settings.system_history {
+            if self.st.settings.system_history_on() {
                 self.start_sysmon();
             }
             // A frame count left running by a Poni that crashed, and whether
@@ -833,6 +895,9 @@ impl App {
                 while let Ok(ev) = self.rx.try_recv() {
                     self.on_event(ev);
                 }
+                for (m, sender) in REC_MISSED.with(|q| std::mem::take(&mut *q.borrow_mut())) {
+                    self.on_recorder_message(m, sender);
+                }
                 self.request_frame();
                 Some(LRESULT(0))
             }
@@ -909,8 +974,10 @@ impl App {
                         self.input.pressed_id = None;
                         self.run_inline_action(a);
                     } else {
-                        // Clicking a notice jumps to its page.
-                        if let Some(n) = self.st.notice.take() {
+                        // Clicking a notice jumps to its page (a new version's
+                        // may be waiting under a volume change or a game's readout).
+                        let shown = self.mode == Mode::Notice;
+                        if let Some(n) = self.st.notice.take_if(|_| shown) {
                             match n.action {
                                 Some(NoticeAction::OpenPage(p)) => self.st.page = p,
                                 Some(NoticeAction::OpenUpdate) => self.st.open_update(),
@@ -1150,6 +1217,7 @@ impl App {
                 self.on_event(AppEvent::Power(p));
                 self.tell_oyenza_activity();
                 self.tell_sysmon_rest();
+                self.set_stocks_watch();
                 self.update_due();
                 self.request_frame();
                 Some(LRESULT(1))
@@ -1162,6 +1230,7 @@ impl App {
                 }
                 self.tell_oyenza_activity();
                 self.tell_sysmon_rest();
+                self.set_stocks_watch();
                 self.update_due();
                 self.request_frame();
                 Some(LRESULT(0))
@@ -1207,7 +1276,7 @@ impl App {
                 }
                 if !self.hovering || self.expanded {
                     self.hover_arm = None;
-                } else if self.st.notice.as_ref().is_some_and(|n| n.inline.is_some()) {
+                } else if self.mode == Mode::Notice && self.st.notice.as_ref().is_some_and(|n| n.inline.is_some()) {
                     // A notice with an inline pill stays put under a resting
                     // pointer so the pill can be clicked (a click on the rest
                     // of the notice still opens its page). The dwell stays
@@ -1299,7 +1368,7 @@ impl App {
     }
 
     /// Save the Apple Music token copied from the browser (sealed with DPAPI)
-    /// and keep it off the clipboard and out of Poni's clipboard history.
+    /// and take it off the clipboard.
     fn use_apple_music_token(&mut self) {
         let text = services::clipboard::read_text(self.hwnd).unwrap_or_default();
         let Some(token) = poni_core::applemusic::clean_user_token(&text) else {
@@ -1312,7 +1381,7 @@ impl App {
             return;
         }
         pinfo!("apple music: token saved");
-        self.forget_clipboard_text(&token);
+        services::clipboard::set_text(self.helper, "");
         if let Some(s) = self.services.as_ref() {
             s.apple_music_token_changed();
         }
@@ -1350,7 +1419,14 @@ impl App {
     /// on) and the power source.
     fn oyenza_activity(&self) -> services::oyenza::Activity {
         let p = self.st.power;
-        services::oyenza::Activity { in_use: !self.locked && !self.display_off, on_ac: p.on_ac || !p.has_battery, saver: p.saver, watching: self.oyenza_watch }
+        services::oyenza::Activity {
+            in_use: !self.locked && !self.display_off,
+            on_ac: p.on_ac || !p.has_battery,
+            saver: p.saver,
+            watching: self.oyenza_watch,
+            today: self.today_watch,
+            health: self.st.health_on(),
+        }
     }
 
     /// The Oyenza page came on screen or went: the worker keeps its list live only meanwhile.
@@ -1358,6 +1434,30 @@ impl App {
         if on != self.oyenza_watch {
             self.oyenza_watch = on;
             self.tell_oyenza_activity();
+        }
+    }
+
+    /// The Today page came on screen or went: the worker asks for the day only meanwhile.
+    fn set_today_watch(&mut self, on: bool) {
+        if on != self.today_watch {
+            self.today_watch = on;
+            self.tell_oyenza_activity();
+        }
+    }
+
+    /// The Stocks page asks oyenza.trade for prices only while it is on
+    /// screen and someone is at the PC (`pages::stocks::watch`); the worker
+    /// starts the first time it opens.
+    fn set_stocks_watch(&mut self) {
+        // The self-test's scenes show a made-up market: nothing is asked.
+        let open = self.mode == Mode::Expanded(PageKind::Stocks) && !self.locked && !self.display_off && self.selftest.is_none();
+        // Closed, and the worker already told so: nothing to do, every frame.
+        if !open && !self.stocks_open {
+            return;
+        }
+        self.stocks_open = open;
+        if let Some(s) = self.services.as_ref() {
+            s.stocks_watch(pages::stocks::watch(&self.st, open));
         }
     }
 
@@ -1392,14 +1492,21 @@ impl App {
                 self.end_sign_in();
                 self.st.notify(Icon::Check, palette::GREEN, "已连接至 Oyenza", format!("账号：{account}"), 6.0, Some(NoticeAction::OpenPage(PageKind::Oyenza)));
                 self.st.oyenza.link = OyenzaLink::Connected { account };
+                // Signed in from the Today page: back to it, where the day comes in.
+                if std::mem::take(&mut self.st.oyenza.from_today) {
+                    self.st.page = PageKind::Today;
+                    self.expand();
+                }
             }
             OyenzaEvent::ConnectFailed(code) => {
+                self.st.oyenza.from_today = false;
                 self.end_sign_in();
                 self.st.oyenza.link = OyenzaLink::Off;
                 let (title, subtitle) = oyenza::connect_failure_text(&code);
                 self.st.notify(Icon::Unlink, palette::ORANGE, title, subtitle, 6.0, None);
             }
             OyenzaEvent::ConnectCancelled => {
+                self.st.oyenza.from_today = false;
                 self.end_sign_in();
                 self.st.oyenza.link = OyenzaLink::Off;
             }
@@ -1430,11 +1537,24 @@ impl App {
                 self.st.oyenza.updated_unix = Some(self.st.unix);
                 self.remind_bills(&day);
             }
-            OyenzaEvent::Health(next) => {
+            OyenzaEvent::Day(day) => {
+                let o = &mut self.st.oyenza;
+                o.agenda = Some(day);
+                o.agenda_unix = Some(self.st.unix);
+                o.agenda_state = crate::state::AgendaState::Ready;
+            }
+            OyenzaEvent::DayUnavailable => {
+                self.st.oyenza.agenda = None;
+                self.st.oyenza.agenda_state = crate::state::AgendaState::Unavailable;
+            }
+            OyenzaEvent::DayFailed => self.st.oyenza.agenda_state = crate::state::AgendaState::Failed,
+            // Steps asked for before Health was switched off stay out.
+            OyenzaEvent::Health(next) if self.st.health_on() => {
                 if let Some(steps) = self.st.take_health(next) {
                     self.steps_notice(steps);
                 }
             }
+            OyenzaEvent::Health(_) => {}
             OyenzaEvent::NoteSaved(saved) => {
                 let o = &mut self.st.oyenza;
                 o.saving = false;
@@ -1464,7 +1584,7 @@ impl App {
                 self.st.notify(Icon::Unlink, palette::TEXT_DIM, title, subtitle, 6.0, None);
             }
         }
-        // The Oyenza tab came or went: the window makes room for its page (or no longer has to).
+        // Signed in or out, the Oyenza page's height changes: the window fits the tallest page again.
         if self.st.oyenza.link != link_before {
             self.layout_surface();
         }
@@ -1539,17 +1659,6 @@ impl App {
         self.oyenza_notice(icon, palette::ORANGE, oyenza::bill_title(&b, today), shown, hidden);
     }
 
-    /// Remove history entries holding `secret` and clear the clipboard.
-    fn forget_clipboard_text(&mut self, secret: &str) {
-        let hits: Vec<usize> = self.st.clip.iter().enumerate().filter(|(_, c)| c.text.contains(secret)).map(|(i, _)| i).collect();
-        for i in hits.into_iter().rev() {
-            self.st.clip.remove(i);
-        }
-        self.st.ui.clip_flash = None;
-        self.own_clip = Some(String::new());
-        services::clipboard::set_text(self.helper, "");
-    }
-
     /// Look up the current track's lyrics again (the sources changed).
     fn refetch_lyrics(&mut self) {
         if !self.st.settings.lyrics {
@@ -1566,12 +1675,6 @@ impl App {
     fn settings_changed(&mut self, before: &Settings) {
         // Show over games and Hide in full-screen apps follow each other.
         self.st.settings.pair_game_stats(before);
-        if before.update_check != self.st.settings.update_check {
-            if let Some(u) = self.updater.as_mut() {
-                u.switched(&mut self.st, crate::updates::unix_now());
-            }
-            self.schedule_update();
-        }
         let now = &self.st.settings;
         if before.theme != now.theme {
             self.st.accent = theme_accent(now.theme);
@@ -1585,12 +1688,6 @@ impl App {
             self.sync_top_watch();
         }
         let now = &self.st.settings;
-        if before.clipboard_history && !now.clipboard_history {
-            // Privacy: turning history off forgets everything, pinned items included.
-            self.st.clip = poni_core::cliphist::ClipHistory::default();
-            self.st.ui.clip_flash = None;
-            self.st.ui.clip_scroll = 0.0;
-        }
         if !before.lyrics && now.lyrics {
             if let Some(m) = self.st.media.clone() {
                 let stale = self.st.lyrics.track_key != m.track_key || self.st.lyrics.status == LyricsStatus::Idle;
@@ -1603,9 +1700,6 @@ impl App {
             }
         }
         self.st.pomodoro.cfg = self.st.settings.pomodoro.clone();
-        if let Some(s) = self.services.as_ref() {
-            s.set_clipboard_history(self.st.settings.clipboard_history);
-        }
         // Prayer times: off stops it at once; a new place, or following the location again.
         let prayer_id = poni_core::addons::PRAYER_TIMES.id;
         if before.addon_on(prayer_id) && !self.st.settings.addon_on(prayer_id) {
@@ -1628,6 +1722,15 @@ impl App {
                 }
             }
         }
+        // Health on or off: the Oyenza worker asks for the steps only while
+        // it's on, and off forgets the ones it had.
+        let health_id = poni_core::addons::HEALTH.id;
+        if before.addon_on(health_id) != self.st.settings.addon_on(health_id) {
+            if !self.st.settings.addon_on(health_id) {
+                self.st.health = None;
+            }
+            self.tell_oyenza_activity();
+        }
         if before.game_stats != self.st.settings.game_stats {
             if self.st.settings.game_stats && self.st.game.access == FpsAccess::Unknown {
                 self.check_fps();
@@ -1643,8 +1746,9 @@ impl App {
             }
             self.peek_game(if self.st.settings.game_peek { "peeks picked" } else { "picked to stay" });
         }
-        let history = self.st.settings.system_history;
-        if before.system_history != history && self.selftest.is_none() {
+        // System's readings at rest: its history switch, while System is on.
+        let history = self.st.settings.system_history_on();
+        if before.system_history_on() != history && self.selftest.is_none() {
             match &self.sysmon {
                 Some(s) => s.background(history),
                 None if history => self.start_sysmon(),
@@ -1664,7 +1768,6 @@ impl App {
         match cmd {
             ToggleIdleStyle(style) => s.idle_style = style,
             SetTheme(theme) => s.theme = theme,
-            ToggleClipboard => s.clipboard_history = !s.clipboard_history,
             ToggleSystemHistory => s.system_history = !s.system_history,
             ToggleLyrics => s.lyrics = !s.lyrics,
             TogglePronunciation => s.lyrics_pronunciation = !s.lyrics_pronunciation,
@@ -1729,6 +1832,7 @@ impl App {
                 self.st.open_update();
                 self.expand();
             }
+            CheckForUpdates => self.check_for_updates(),
             ToggleOyenzaAmounts => s.oyenza_show_amounts = !s.oyenza_show_amounts,
             Quit => {
                 self.quit(0);
@@ -1937,13 +2041,6 @@ impl App {
                 self.st.game.access = a;
                 self.sync_game();
             }
-            AppEvent::ClipboardText(t) => {
-                if self.own_clip.as_deref() == Some(t.as_str()) {
-                    self.own_clip = None;
-                } else {
-                    self.st.clip.push(&t, self.st.unix);
-                }
-            }
             AppEvent::AppleMusic(status) => self.on_apple_music(status),
             AppEvent::Phone(e) => self.on_phone(e),
             AppEvent::Paired(e) => self.on_paired(e),
@@ -1973,21 +2070,25 @@ impl App {
                 }
             }
             AppEvent::Update(services::update::UpdateEvent::Checked(r)) => {
-                if let Some(u) = self.updater.as_mut() {
-                    u.checked(&mut self.st, r, crate::updates::unix_now());
-                }
+                let open = self.updater.as_mut().is_some_and(|u| u.checked(&mut self.st, r, crate::updates::unix_now()));
                 self.schedule_update();
                 self.fetch_setup();
+                // Check for updates… found one to install: the Update sheet.
+                if open {
+                    self.expand();
+                }
                 // A frame, so a new version's notice goes up now, not with the next redraw.
                 self.request_frame();
             }
             AppEvent::Update(services::update::UpdateEvent::Downloaded(r)) => {
-                if let Some(u) = self.updater.as_mut() {
-                    u.fetched(&mut self.st, r);
+                if self.updater.as_mut().is_some_and(|u| u.fetched(&mut self.st, r)) {
+                    self.expand();
                 }
                 self.request_frame();
             }
             AppEvent::Located(found) => self.on_located(found),
+            AppEvent::Cities { file, got } => pages::prayer::cities_came(&mut self.st, file, got),
+            AppEvent::Stocks(ev) => self.st.stocks.apply(ev, self.st.unix),
             AppEvent::AdzanEnded => self.adzan_ended(),
             AppEvent::Log(s) => pinfo!("{s}"),
         }
@@ -2032,6 +2133,17 @@ impl App {
         if !self.expanded {
             self.expanded = true;
             self.cancel_hover();
+            // A recorder installed or removed since the last look (one registry read).
+            if self.selftest.is_none() {
+                self.st.recorder = services::recorder::installed();
+            }
+            self.check_recorder_alive();
+            // A recording under way opens on its page: Pause and Stop are there.
+            if self.st.rec_live() && self.st.record_on() {
+                self.st.page = PageKind::Record;
+            } else if self.st.page == PageKind::Record && !self.st.record_on() {
+                self.st.page = PageKind::ALL[0];
+            }
             if self.st.page == PageKind::Oyenza {
                 self.oyenza(OyenzaCmd::Refresh);
             } else if self.st.page == PageKind::Health {
@@ -2064,7 +2176,8 @@ impl App {
             }
             self.set_stats(false);
             self.set_sysmon(false);
-            self.st.ui.clip_flash = None;
+            // Oyen arrives in his tab again at the next opening.
+            self.st.ui.oyen_tab = None;
             // Sums shown in the Oyenza tab hide again, and it opens on Today next time.
             self.st.oyenza.reveal = false;
             self.st.oyenza.day = oyenza::DayPick::Today;
@@ -2074,6 +2187,7 @@ impl App {
                 self.st.page = self.st.ui.before_settings.take().filter(|p| pages::tabs(&self.st).contains(p)).unwrap_or(PageKind::ALL[0]);
             }
             self.st.update.sheet = false;
+            self.st.update.said = None;
             // A notice that arrived while expanded gets its full time now.
             let min_until = self.st.now + 4.0;
             if let Some(n) = self.st.notice.as_mut() {
@@ -2086,7 +2200,30 @@ impl App {
     /// Nothing holds the open island: no pointer on it, no pin, typing,
     /// file drag, press or Phone drop.
     fn free_to_collapse(&self) -> bool {
-        !self.hovering && !self.st.pinned && !self.text_focus && !self.drag_hover && self.input.pressed_id.is_none() && !self.phone_holds()
+        !self.hovering && !self.st.pinned && !self.text_focus && !self.drag_hover && !self.menu_open && self.input.pressed_id.is_none() && !self.phone_holds()
+    }
+
+    /// The right-click menu closed: the island stays open with the pointer
+    /// back on it, and closes after the hold's grace without.
+    fn menu_closed(&mut self) {
+        if !std::mem::take(&mut self.menu_open) || !self.expanded || self.hovering {
+            return;
+        }
+        let mut pt = POINT::default();
+        let on_island = unsafe { GetCursorPos(&mut pt).is_ok() && windows::Win32::Graphics::Gdi::ScreenToClient(self.hwnd, &mut pt).as_bool() } && {
+            let s = self.gfx.scale();
+            self.hovering_inside(Point::new(pt.x as f32 / s, pt.y as f32 / s))
+        };
+        if on_island {
+            // As a move onto it would: watch for the pointer leaving again.
+            self.hovering = true;
+            unsafe {
+                let mut tme = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: self.hwnd, dwHoverTime: 0 };
+                let _ = TrackMouseEvent(&mut tme);
+            }
+        } else {
+            self.maybe_schedule_collapse();
+        }
     }
 
     /// The pointer left the open island: it starts closing on the next frame,
@@ -2108,7 +2245,7 @@ impl App {
 
     /// A hold ended (see [`HOLD_GRACE_MS`]): close soon unless the pointer is on the island.
     fn maybe_schedule_collapse(&mut self) {
-        if self.expanded && !self.hovering && !self.st.pinned && !self.text_focus && !self.drag_hover && !self.phone_holds() {
+        if self.expanded && !self.hovering && !self.st.pinned && !self.text_focus && !self.drag_hover && !self.menu_open && !self.phone_holds() {
             unsafe {
                 SetTimer(self.hwnd, TIMER_COLLAPSE, HOLD_GRACE_MS.max(self.st.settings.collapse_delay_ms), None);
             }
@@ -2149,14 +2286,14 @@ impl App {
             s.open(on);
         }
         // The readout over a game still draws from them.
-        if !on && !self.st.settings.system_history && !self.st.game.active {
+        if !on && !self.st.settings.system_history_on() && !self.st.game.active {
             self.st.system.clear();
         }
     }
 
     fn start_sysmon(&mut self) {
         self.sysmon_rest = self.rest_now();
-        match services::sysmon::SysMon::start(self.sink.clone(), self.st.settings.system_history, self.sysmon_rest) {
+        match services::sysmon::SysMon::start(self.sink.clone(), self.st.settings.system_history_on(), self.sysmon_rest) {
             Ok(s) => self.sysmon = Some(s),
             Err(e) => pwarn!("sysmon: couldn't start ({e})"),
         }
@@ -2179,7 +2316,7 @@ impl App {
         if let Some(s) = &self.sysmon {
             s.rest(rest);
         }
-        if !poni_core::sysmon::reads(self.sysmon_on, self.st.game.active, self.st.settings.system_history, rest) {
+        if !poni_core::sysmon::reads(self.sysmon_on, self.st.game.active, self.st.settings.system_history_on(), rest) {
             self.st.system.clear();
         }
     }
@@ -2210,6 +2347,7 @@ impl App {
             unsafe {
                 let _ = ShowWindow(self.hwnd, if hide { SW_HIDE } else { SW_SHOWNOACTIVATE });
             }
+            self.gfx.set_shown(!hide);
             if hide {
                 self.collapse();
                 self.cancel_hover();
@@ -2352,6 +2490,77 @@ impl App {
         self.set_script_hotkey(can_read && self.selftest.is_none());
     }
 
+    /// Oyenza Studio Recorder's word on its recording, or "show yourself"
+    /// (`recorder_message`). True when the island takes it: it shows the
+    /// recording, or opened on its Record page.
+    fn on_recorder_message(&mut self, m: poni_core::recorder::Message, sender: isize) -> bool {
+        use poni_core::recorder::{Message, Phase};
+        // Only an installed recorder that reads the Record page's links
+        // writes: the Record tab can show from now on (remembered).
+        self.st.recorder = true;
+        if !self.st.store.recorder_island {
+            self.st.store.recorder_island = true;
+            self.st.cmd(Command::SaveStore);
+        }
+        if !self.st.record_on() {
+            return false;
+        }
+        let taken = match m {
+            // Hidden for a full-screen app, the island can't be the recorder's face.
+            Message::Show if self.fullscreen_hidden => false,
+            // A show while Record is still opening the recorder comes from
+            // the launch Record caused: taken, and the island stays as it is.
+            Message::Show if self.st.rec.opening_until > clock::mono() => true,
+            Message::Show => {
+                self.st.page = PageKind::Record;
+                self.expand();
+                true
+            }
+            Message::State { phase, elapsed_ms, error } => {
+                let now = clock::mono();
+                let rec = &mut self.st.rec;
+                rec.opening_until = 0.0;
+                if phase == Phase::Idle {
+                    rec.phase = None;
+                    rec.sender = 0;
+                    rec.error = error.map(|e| (e, now + REC_ERROR_S));
+                } else {
+                    rec.phase = Some(phase);
+                    rec.elapsed_ms = elapsed_ms;
+                    rec.at = now;
+                    rec.sender = sender;
+                    rec.error = None;
+                }
+                true
+            }
+        };
+        self.request_frame();
+        taken
+    }
+
+    /// A recorder gone mid-recording (closed, crashed) leaves no recording
+    /// behind on the island. A window check, only while one is under way.
+    fn check_recorder_alive(&mut self) {
+        let sender = self.st.rec.sender;
+        if self.st.rec_live() && sender != 0 && !unsafe { IsWindow(HWND(sender as *mut core::ffi::c_void)) }.as_bool() {
+            pinfo!("recorder: its window went away mid-recording");
+            self.st.rec = crate::state::RecView::default();
+            self.request_frame();
+        }
+    }
+
+    /// Out of the recorder's video (and every other capture) while a recording
+    /// runs, on the Windows versions that can leave a window out.
+    fn sync_recording_capture(&mut self, on: bool) {
+        if on == self.rec_excluded {
+            return;
+        }
+        self.rec_excluded = on;
+        if !on || window::windows_build().is_some_and(|b| b >= crate::glass::EXCLUDE_FROM_CAPTURE_BUILD) {
+            window::exclude_from_capture(self.hwnd, window::CaptureOwner::Recording, on);
+        }
+    }
+
     /// Out of screen shares and recordings while the Script page shows, and
     /// until the island has closed over it.
     fn sync_script_capture(&mut self, on: bool) {
@@ -2401,7 +2610,7 @@ impl App {
                 self.game_pid = None;
                 self.st.game.rate = None;
                 self.st.game.app = None;
-                if !self.sysmon_on && !self.st.settings.system_history {
+                if !self.sysmon_on && !self.st.settings.system_history_on() {
                     self.st.system.clear();
                 }
             }
@@ -2694,6 +2903,7 @@ impl App {
     }
 
     fn tick(&mut self) {
+        self.check_recorder_alive();
         let now = self.st.now;
         if let Some(h) = &self.st.hud {
             if now >= h.until {
@@ -2714,14 +2924,17 @@ impl App {
         if let Some(ended) = self.st.pomodoro.tick(now) {
             pages::focus::on_phase_ended(&mut self.st, ended);
         }
-        // Signed out: the Oyenza tab is gone.
-        if self.st.page == PageKind::Oyenza && !self.st.oyenza.tab_visible() {
-            self.st.page = PageKind::ALL[0];
-        }
         self.prayer_tick();
         self.script_tick();
-        // Prayer times switched off: its tab is gone.
-        if self.st.page == PageKind::Prayer && !self.st.prayer_on() {
+        // Prayer times, System, Health or Stocks switched off: its tab is gone.
+        let gone = match self.st.page {
+            PageKind::Prayer => !self.st.prayer_on(),
+            PageKind::System => !self.st.system_on(),
+            PageKind::Health => !self.st.health_on(),
+            PageKind::Stocks => !self.st.stocks_on(),
+            _ => false,
+        };
+        if gone {
             self.st.page = PageKind::Addons;
         }
     }
@@ -2812,9 +3025,12 @@ impl App {
             dt = dt.min(period);
         }
         let dt = dt.clamp(0.0, 0.05) as f32;
-        self.set_stats(self.mode == Mode::Expanded(PageKind::Today));
+        // Today's tiles need the readings only while they show (signed out it has the sign-in card, signed in the day).
+        self.set_stats(self.mode == Mode::Expanded(PageKind::Today) && pages::today::shows_tiles(&self.st));
         self.set_sysmon(self.mode == Mode::Expanded(PageKind::System));
         self.set_oyenza_watch(self.mode == Mode::Expanded(PageKind::Oyenza));
+        self.set_today_watch(self.mode == Mode::Expanded(PageKind::Today));
+        self.set_stocks_watch();
         // The Pill theme floats the island below the top edge.
         self.island.set_floating(pill::on(self.st.settings.theme).then_some(pill::TOP_GAP));
         self.island.step(dt, now);
@@ -2889,6 +3105,7 @@ impl App {
             && matches!(self.gfx.renderer(), crate::gfx::Renderer::Gpu { .. });
         self.glass.sync(copy_on, self.hwnd, &self.sink, self.monitor.handle, window_px, &mut self.gfx);
         self.sync_script_capture(self.st.page == PageKind::Script && (self.expanded || !self.island.settled()));
+        self.sync_recording_capture(self.st.rec_live() && self.st.record_on());
         let mut glass_moving = false;
         let glass = if glass_theme && !hidden_idle {
             let small = !matches!(mode, Mode::Expanded(_));
@@ -3044,6 +3261,7 @@ impl App {
                 let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
                 let _ = SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
+            self.gfx.set_shown(true);
         }
 
         match focus {
@@ -3181,6 +3399,13 @@ impl App {
         if let poni_core::pomodoro::RunState::Running { ends_at } = self.st.pomodoro.run {
             consider(ends_at + 0.005);
         }
+        // A recording's time, on the closed island and its page: a frame for
+        // each new second while it records (none while paused), resting while
+        // nobody is at the PC (the lock and display events ask for a frame).
+        let watched_rec = visible && !self.locked && !self.display_off && self.st.record_on();
+        if let Some(b) = self.st.rec_next_second().filter(|_| watched_rec) {
+            consider(now + b + 0.005);
+        }
         // The music pill wakes for every sung line (in every theme), and Pill's
         // pills for their own changes; nobody sees those while the session is
         // locked or the display is off, so they rest then (the lock and
@@ -3217,13 +3442,13 @@ impl App {
 
     // ------------------------------------------------------------ new versions
 
-    /// Arm the update file's timer for the next read, or stop it while the
-    /// checks are off or a read runs.
+    /// Arm the update file's timer for the next read, or stop it while a
+    /// read runs.
     fn schedule_update(&mut self) {
-        let secs = self.updater.as_ref().and_then(|u| u.due_in(&self.st, crate::updates::unix_now()));
+        let secs = self.updater.as_ref().and_then(|u| u.due_in(crate::updates::unix_now()));
         unsafe {
             match secs {
-                // SetTimer waits at most about 24 days; reads are 12 hours apart.
+                // SetTimer waits at most about 24 days; reads are an hour apart.
                 Some(s) => {
                     SetTimer(self.hwnd, TIMER_UPDATE, s.saturating_mul(1000).clamp(1000, 0x7FFF_FFFF) as u32, None);
                 }
@@ -3240,20 +3465,34 @@ impl App {
     fn update_due(&mut self) {
         let now = crate::updates::unix_now();
         let away = self.locked || self.display_off || self.st.power.saver;
-        match self.updater.as_ref().and_then(|u| u.due_in(&self.st, now)) {
+        match self.updater.as_ref().and_then(|u| u.due_in(now)) {
             Some(0) if away => {}
-            Some(0) => {
-                let job = services::update::check_job(self.sink.clone());
-                let started = self.services.as_ref().is_some_and(|s| s.run_job(job));
-                if let Some(u) = self.updater.as_mut() {
-                    u.begin();
-                    if !started {
-                        u.checked(&mut self.st, Err("the add-on thread isn't running".into()), now);
-                        self.schedule_update();
-                    }
-                }
-            }
+            Some(0) => self.read_update_file(now),
             _ => self.schedule_update(),
+        }
+    }
+
+    /// Check for updates… (the menu): read the update file now, even on
+    /// battery saver (someone asked); the answer goes on the island.
+    fn check_for_updates(&mut self) {
+        let now = crate::updates::unix_now();
+        if self.updater.as_mut().is_some_and(|u| u.ask(now)) {
+            self.read_update_file(now);
+        }
+        self.request_frame();
+    }
+
+    /// Read the update file on the add-on thread; the answer comes back as
+    /// `UpdateEvent::Checked`.
+    fn read_update_file(&mut self, now: u64) {
+        let job = services::update::check_job(self.sink.clone());
+        let started = self.services.as_ref().is_some_and(|s| s.run_job(job));
+        if let Some(u) = self.updater.as_mut() {
+            u.begin();
+            if !started {
+                u.checked(&mut self.st, Err("the add-on thread isn't running".into()), now);
+                self.schedule_update();
+            }
         }
     }
 
@@ -3262,10 +3501,8 @@ impl App {
     fn fetch_setup(&mut self) {
         let Some((d, path)) = self.updater.as_mut().and_then(|u| u.want_setup(&mut self.st)) else { return };
         let job = services::update::download_job(self.sink.clone(), d, path);
-        if !self.services.as_ref().is_some_and(|s| s.run_job(job)) {
-            if let Some(u) = self.updater.as_mut() {
-                u.fetched(&mut self.st, Err("the add-on thread isn't running".into()));
-            }
+        if !self.services.as_ref().is_some_and(|s| s.run_job(job)) && self.updater.as_mut().is_some_and(|u| u.fetched(&mut self.st, Err("the add-on thread isn't running".into()))) {
+            self.expand();
         }
     }
 
@@ -3301,6 +3538,10 @@ impl App {
             // Gone at once, the way a notice leaves when its time is up.
             if let Some(n) = self.st.notice.as_mut() {
                 n.until = self.st.now;
+            }
+            // A new version's: it doesn't come back.
+            if let Some(u) = self.updater.as_mut() {
+                u.seen(&mut self.st);
             }
             return;
         }
@@ -3366,10 +3607,16 @@ impl App {
     }
 
     /// The place the times are for: the chosen one, or until there is one,
-    /// the one the PC's time zone suggests.
+    /// the one the PC's time zone suggests. A place from the world list is
+    /// kept as it is once settled; at start it comes from the lines settings
+    /// keep of it (nothing online).
     fn resolve_prayer_place(&mut self) {
         let Some(list) = self.st.prayer.places.clone() else { return };
-        let chosen = self.st.settings.prayer.place.as_deref().and_then(|id| list.find(id)).cloned();
+        let chosen = match self.st.settings.prayer.place.as_deref() {
+            Some(id) if self.st.prayer.place.as_ref().is_some_and(|p| p.id == id) => self.st.prayer.place.clone(),
+            Some(id) => poni_core::prayer::find(&list, self.st.settings.prayer.world_place.as_deref(), id),
+            None => None,
+        };
         let suggested = chosen.is_none();
         let place = chosen.or_else(|| poni_core::prayer::suggested_place_id(self.utc_offset_min()).and_then(|id| list.find(id)).cloned());
         let changed = place.as_ref().map(|p| &p.id) != self.st.prayer.place.as_ref().map(|p| &p.id);
@@ -3400,27 +3647,15 @@ impl App {
     }
 
     /// The nearest listed place becomes the place, while following the
-    /// location. The point itself is dropped here.
+    /// location (`pages::prayer::located`). The point is never saved.
     fn on_located(&mut self, found: services::location::Located) {
         use services::location::Located;
-        self.st.prayer.locate = match found {
-            Located::Denied => Locate::Denied,
-            Located::Unknown => Locate::Unknown,
-            Located::At(lat, lng) => {
-                let Some(list) = self.st.prayer.places.clone() else { return };
-                let Some((place, km)) = list.nearest(lat, lng) else { return };
-                if km > poni_core::prayer::NEAREST_MAX_KM {
-                    pinfo!("prayer: the nearest listed place is {km:.0} km away");
-                    Locate::Far { km }
-                } else {
-                    if self.st.settings.prayer.follow_location && self.st.settings.prayer.place.as_deref() != Some(place.id.as_str()) {
-                        self.st.settings.prayer.place = Some(place.id.clone());
-                        self.st.cmd(Command::SaveSettings);
-                    }
-                    Locate::Found { km }
-                }
-            }
-        };
+        match found {
+            Located::Denied => self.st.prayer.locate = Locate::Denied,
+            Located::Unknown => self.st.prayer.locate = Locate::Unknown,
+            // Kemenag's places, or the world's cities around it (looked up online).
+            Located::At(lat, lng) => pages::prayer::located(&mut self.st, lat, lng),
+        }
     }
 
     /// Each frame (and each minute): the prayer times that just came, and
@@ -3515,6 +3750,7 @@ impl App {
             // Settings is never where the island opens next time.
             if p != PageKind::Settings {
                 self.st.update.sheet = false;
+                self.st.update.said = None;
                 self.st.store.last_page = p.key().to_string();
                 unsafe {
                     SetTimer(self.hwnd, TIMER_SAVE, 800, None);
@@ -3566,13 +3802,23 @@ impl App {
                         services::imaging::load_thumb_async(p, self.sink.clone());
                     }
                 }
-                Command::CopyText(t) => {
-                    self.own_clip = Some(t.clone());
-                    services::clipboard::set_text(self.helper, &t);
-                }
                 Command::FocusText => self.focus_text(),
                 Command::BlurText => self.blur_text(),
                 Command::RecordScreen => services::recorder::record_screen(self.hwnd),
+                Command::Record => {
+                    let rec = self.st.settings.record;
+                    services::recorder::record(self.hwnd, rec.target, rec.inputs());
+                    self.st.rec.opening_until = self.st.now + REC_OPENING_S;
+                    self.st.rec.error = None;
+                    // A window or an area is picked on the recorder's overlay:
+                    // the open island would sit over it.
+                    if rec.target != poni_core::recorder::Target::Screen {
+                        self.collapse();
+                    }
+                }
+                Command::RecordPause => services::recorder::pause(),
+                Command::RecordResume => services::recorder::resume(),
+                Command::RecordStop => services::recorder::stop(),
                 Command::ScriptPaste => {
                     // Read here, not through the text field path: that one drops line breaks.
                     let text = services::clipboard::read_text(self.hwnd).map(|t| poni_core::script::clean(&t)).filter(|t| !t.is_empty());
@@ -3619,6 +3865,7 @@ impl App {
                 Command::Play(s) => services::sound::play(s),
                 Command::OpenUrl(u) => shell::open(&u),
                 Command::Update => self.update_now(),
+                Command::CheckForUpdates => self.check_for_updates(),
                 Command::InstallOnNextStart => {
                     if let Some(u) = self.updater.as_mut() {
                         u.install_on_next_start(&mut self.st);
@@ -3632,6 +3879,12 @@ impl App {
                 Command::Phone(c) => self.phone_cmd(c),
                 Command::Pair(c) => self.pair_cmd(c),
                 Command::Oyenza(c) => self.oyenza(c),
+                // The self-test's pictures use the files it seeds (none from the website).
+                Command::GetCities(file) => {
+                    if self.selftest.is_none() {
+                        services::cities::fetch(file, self.sink.clone());
+                    }
+                }
             }
         }
         self.sync_phone_offer();

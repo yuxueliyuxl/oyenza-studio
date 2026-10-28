@@ -1,5 +1,5 @@
-//! The Mac's side of what the island asks the system for: what Music and
-//! Spotify play, lyrics, the add-ons (Japanese readings, and Prayer times'
+//! The Mac's side of what the island asks the system for: what plays (from
+//! macOS's own now playing, or Music and Spotify themselves), lyrics, the add-ons (Japanese readings, and Prayer times'
 //! location and adzan), power, volume, system stats, the System page's
 //! readings, the clipboard, Shelf tiles, Phone drop, full-screen apps and
 //! start at login (one file each), plus a few direct calls (the accent
@@ -21,6 +21,8 @@ pub mod fullscreen;
 pub mod http;
 #[path = "services/media.rs"]
 pub mod media;
+#[path = "services/mediaremote.rs"]
+mod mediaremote;
 #[path = "services/romanize.rs"]
 pub mod romanize;
 #[path = "services/secret.rs"]
@@ -37,12 +39,17 @@ pub mod lyrics;
 // So is the add-ons' downloader: the Mac offers every add-on with it.
 #[path = "../services/addons.rs"]
 pub mod addons;
+#[path = "../services/cities.rs"]
+pub mod cities;
 // And Oyenza sign-in: its key goes through secret.rs above.
 #[path = "../services/oyenza.rs"]
 pub mod oyenza;
 // And the update file's reader, which runs on the add-ons' thread.
 #[path = "../services/update.rs"]
 pub mod update;
+// And the Stocks page's prices from oyenza.trade.
+#[path = "../services/stocks.rs"]
+pub mod stocks;
 #[path = "services/location.rs"]
 pub mod location;
 #[path = "services/login.rs"]

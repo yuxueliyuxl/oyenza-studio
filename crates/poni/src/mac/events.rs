@@ -9,6 +9,7 @@ use crate::gfx::Image;
 use crate::state::{MediaSession, PowerState, SysStats};
 use poni_core::health::HealthSnapshot;
 use poni_core::lrc::Lyrics;
+use poni_core::agenda;
 use poni_core::oyenza::{Activity, Arrival, Bill, Saved};
 use poni_core::romanize::Ruby;
 use poni_core::timeline::Timeline;
@@ -77,6 +78,14 @@ pub enum OyenzaEvent {
     /// The steps the phone sent, for the Health page; None: none to show (off in
     /// Oyenza on the phone, or a server from before steps).
     Health(Option<HealthSnapshot>),
+    /// The day for the Today page, from the apps switched on in oyenza.app (asked
+    /// while the page is on screen).
+    Day(agenda::Answer),
+    /// The server has no day for the Today page (a server from before it, or
+    /// switched off there): the page stays as it was before signing in mattered.
+    DayUnavailable,
+    /// The day couldn't be read just now (offline, a server error).
+    DayFailed,
     NoteSaved(Vec<Saved>),
     /// The note wasn't saved; the island puts `text` back and says why (`code`).
     NoteFailed { text: String, code: String },
@@ -119,7 +128,6 @@ pub enum AppEvent {
     ScreensAsleep(bool),
     /// The Mac was locked (true) or unlocked.
     Locked(bool),
-    ClipboardText(String),
     /// Something happened in Phone drop (a phone visited, asked, sent files).
     Phone(poni_core::phonedrop::Event),
     /// Where an add-on's files stand (`services::addons`).
@@ -128,6 +136,10 @@ pub enum AppEvent {
     Update(crate::services::update::UpdateEvent),
     /// Where the Mac is, for Prayer times (`services::location`).
     Located(crate::services::location::Located),
+    /// One of Prayer times' online city files (`services::cities`).
+    Cities { file: String, got: Result<poni_core::prayer::World, String> },
+    /// The Stocks page's prices, names and years (`services::stocks`).
+    Stocks(crate::services::stocks::StocksEvent),
     /// Prayer times' adzan played to its end (`services::adzan`).
     AdzanEnded,
     /// Free-form log line from a service thread.
