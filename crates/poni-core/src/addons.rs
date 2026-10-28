@@ -71,8 +71,8 @@ impl Addon {
 /// Prayer times: the place list and the adzan (`addons/sholat/` in the repo).
 pub const PRAYER_TIMES: Addon = Addon {
     id: "sholat",
-    title: "Prayer times",
-    blurb: "Today's times for your city and a reminder in the island.",
+    title: "祈祷时间提醒",
+    blurb: "为您所在城市提供每日祈祷时刻表，并在灵动岛中准时提醒。",
     mac_blurb: None,
     tag: "addon-sholat-1",
     files: &[
@@ -95,9 +95,9 @@ pub const JA_READINGS_FILE: &str = "ja-readings.dic.zst";
 /// notice `addons/ja/NOTICE.txt`.
 pub const JAPANESE_READINGS: Addon = Addon {
     id: "ja",
-    title: "Japanese readings",
-    blurb: "Romaji under kanji in Japanese lyrics, where Windows can't read them.",
-    mac_blurb: Some("Romaji under kanji in Japanese lyrics."),
+    title: "日文歌词注音 (罗马音)",
+    blurb: "在日文歌词的汉字下方标注罗马音注音。",
+    mac_blurb: Some("在日文歌词的汉字下方标注罗马音注音。"),
     tag: "addon-ja-1",
     files: &[
         AddonFile { name: JA_READINGS_FILE, size: 3_790_036, sha256: "4950e5e42a2a48ad50396304c6bfbb8f9a97b33947e147007943361d65d856c8" },
@@ -110,9 +110,9 @@ pub const JAPANESE_READINGS: Addon = Addon {
 /// the island has no Script tab, no Alt+Shift+S and nothing running for it.
 pub const SCRIPT_READER: Addon = Addon {
     id: "script",
-    title: "Script reader",
-    blurb: "A teleprompter under your webcam, left out of screen shares.",
-    mac_blurb: Some("A teleprompter under your webcam."),
+    title: "提词器 (Script Reader)",
+    blurb: "在摄像头下方悬浮显示台词提词器，屏幕共享时对观众自动隐形。",
+    mac_blurb: Some("在摄像头下方悬浮显示台词提词器。"),
     tag: "",
     files: &[],
 };
@@ -133,11 +133,11 @@ pub fn ja_switches_on(settings: &Settings, wants: bool) -> bool {
 /// click gets it (switches it on). None once it's in place.
 pub fn ja_offer(status: Status) -> Option<(String, bool)> {
     match status {
-        Status::Off => Some((format!("Romaji for kanji: get Japanese readings ({})", fmt_bytes(JAPANESE_READINGS.size())), true)),
-        Status::Checking => Some(("Checking Japanese readings\u{2026}".to_string(), false)),
-        Status::Downloading { done, total } => Some((format!("Getting Japanese readings \u{b7} {} of {}", fmt_bytes(done), fmt_bytes(total)), false)),
-        Status::Waiting => Some(("Japanese readings download once you're online".to_string(), false)),
-        Status::Failed => Some(("Japanese readings didn't download: see Add-ons".to_string(), false)),
+        Status::Off => Some((format!("日文歌词罗马音注音：获取日文字典 ({})", fmt_bytes(JAPANESE_READINGS.size())), true)),
+        Status::Checking => Some(("正在检查日文字典\u{2026}".to_string(), false)),
+        Status::Downloading { done, total } => Some((format!("正在下载日文字典 \u{b7} {} / {}", fmt_bytes(done), fmt_bytes(total)), false)),
+        Status::Waiting => Some(("联网后将自动开始下载日文字典".to_string(), false)),
+        Status::Failed => Some(("日文字典下载失败：请前往“附加功能”页面查看".to_string(), false)),
         Status::Ready => None,
     }
 }
@@ -168,15 +168,15 @@ impl Status {
 
     /// The line under the add-on's name; `mac`: in the Mac app.
     pub fn line(self, addon: &Addon, mac: bool) -> String {
-        let here = if mac { "this Mac" } else { "this PC" };
+        let here = if mac { "Mac" } else { "本地" };
         match self {
             Status::Off => addon.mac_blurb.filter(|_| mac).unwrap_or(addon.blurb).to_string(),
-            Status::Checking => format!("Checking its files on {here}"),
-            Status::Downloading { done, total } => format!("Downloading · {} of {}", fmt_bytes(done), fmt_bytes(total)),
-            Status::Waiting => "No internet. It downloads by itself once you're back online.".to_string(),
-            Status::Ready if !addon.downloads() => "On".to_string(),
-            Status::Ready => format!("On · {} on {here}", fmt_bytes(addon.size())),
-            Status::Failed => "The download didn't come through right. Switch it off and on to try again.".to_string(),
+            Status::Checking => format!("正在检查{here}上的文件"),
+            Status::Downloading { done, total } => format!("正在下载 · {} / {}", fmt_bytes(done), fmt_bytes(total)),
+            Status::Waiting => "无网络连接。重新联网后将自动在后台下载。".to_string(),
+            Status::Ready if !addon.downloads() => "已开启".to_string(),
+            Status::Ready => format!("已开启 · 占用{here}空间 {}", fmt_bytes(addon.size())),
+            Status::Failed => "下载过程中校验失败。请关闭后重新开启以重试。".to_string(),
         }
     }
 

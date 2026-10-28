@@ -103,12 +103,12 @@ fn item(label: &str, cmd: MenuCmd, checked: bool) -> MenuItem {
 /// An idle look as the menu names it. In the Oyen theme the eyes are Oyen's own.
 fn idle_label(s: IdleStyle, theme: Theme) -> &'static str {
     match s {
-        IdleStyle::Clock => "Clock",
-        IdleStyle::Eyes if theme == Theme::Oyen => "Oyen",
-        IdleStyle::Eyes => "Eyes",
-        IdleStyle::Minimal => "Minimal",
-        IdleStyle::Hidden => "Hidden until hover",
-        IdleStyle::Status => "Status bar",
+        IdleStyle::Clock => "时钟",
+        IdleStyle::Eyes if theme == Theme::Oyen => "Oyen 眼睛",
+        IdleStyle::Eyes => "眼睛",
+        IdleStyle::Minimal => "极简",
+        IdleStyle::Hidden => "隐藏（悬停显示）",
+        IdleStyle::Status => "状态栏",
     }
 }
 
@@ -120,48 +120,48 @@ pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, recorder: boo
     let theme = |label: &str, t: Theme| item(label, MenuCmd::SetTheme(t), s.theme == t);
     let fullscreen = |label: &str, hide: bool| item(label, MenuCmd::SetHideFullscreen(hide), s.hide_in_fullscreen == hide);
     let mut items = vec![
-        item("Keep island open", MenuCmd::TogglePinned, pinned),
-        MenuItem::Sub { label: "Theme".into(), items: vec![theme("Classic", Theme::Classic), theme("Oyen", Theme::Oyen), theme("Glass", Theme::Glass), theme("Pill", Theme::Pill)] },
+        item("保持灵动岛展开", MenuCmd::TogglePinned, pinned),
+        MenuItem::Sub { label: "主题".into(), items: vec![theme("经典 (Classic)", Theme::Classic), theme("Oyen 猫咪", Theme::Oyen), theme("磨砂毛玻璃 (Glass)", Theme::Glass), theme("胶囊药丸 (Pill)", Theme::Pill)] },
         // The status bar is listed only in Pill, as on the Settings page: the
         // other themes would draw the clock for it.
-        MenuItem::Sub { label: "Idle look".into(), items: crate::pill::status::looks(s.theme).iter().map(|l| style(*l)).collect() },
+        MenuItem::Sub { label: "待机形态".into(), items: crate::pill::status::looks(s.theme).iter().map(|l| style(*l)).collect() },
         MenuItem::Separator,
-        item("Synced lyrics", MenuCmd::ToggleLyrics, s.lyrics),
-        item("Lyrics pronunciation (romaji, pinyin, Korean)", MenuCmd::TogglePronunciation, s.lyrics_pronunciation),
+        item("同步歌词", MenuCmd::ToggleLyrics, s.lyrics),
+        item("歌词注音 (拼音 / 罗马音 / 韩文注音)", MenuCmd::TogglePronunciation, s.lyrics_pronunciation),
         apple_music_menu(),
         oyenza_menu(s, oyenza),
-        item("Clipboard history", MenuCmd::ToggleClipboard, s.clipboard_history),
-        item("Keep System page history", MenuCmd::ToggleSystemHistory, s.system_history),
-        item("Sounds", MenuCmd::ToggleSounds, s.sounds),
+        item("剪贴板历史", MenuCmd::ToggleClipboard, s.clipboard_history),
+        item("保留系统监控历史数据", MenuCmd::ToggleSystemHistory, s.system_history),
+        item("操作音效", MenuCmd::ToggleSounds, s.sounds),
         MenuItem::Sub {
-            label: "In full-screen apps".into(),
+            label: "全屏应用场景".into(),
             items: vec![
-                fullscreen("Hide", true),
-                fullscreen("Stay on top", false),
+                fullscreen("自动隐藏", true),
+                fullscreen("始终保持置顶", false),
                 MenuItem::Separator,
-                item("Show FPS, GPU and CPU over games", MenuCmd::ToggleGameStats, s.game_stats),
-                item("Only for a few seconds (no added delay)", MenuCmd::ToggleGamePeek, s.game_peek),
+                item("游戏中显示帧率、GPU 和 CPU", MenuCmd::ToggleGameStats, s.game_stats),
+                item("仅显示数秒（无附加延迟）", MenuCmd::ToggleGamePeek, s.game_peek),
             ],
         },
-        item("Start with Windows", MenuCmd::ToggleAutostart, crate::autostart::is_enabled()),
+        item("开机自启动", MenuCmd::ToggleAutostart, crate::autostart::is_enabled()),
         MenuItem::Separator,
-        item("Open settings file", MenuCmd::OpenSettings, false),
-        item("Reload settings", MenuCmd::ReloadSettings, false),
-        item("Open data folder", MenuCmd::OpenDataFolder, false),
-        item("Lyrics by LRCLIB", MenuCmd::LyricsCredit, false),
+        item("打开配置文件", MenuCmd::OpenSettings, false),
+        item("重载配置", MenuCmd::ReloadSettings, false),
+        item("打开数据目录", MenuCmd::OpenDataFolder, false),
+        item("歌词提供源：LRCLIB", MenuCmd::LyricsCredit, false),
         // Which version and build this is, as the Mac menu says it.
         item(&crate::version::about_label(), MenuCmd::About, false),
         MenuItem::Separator,
-        item("Quit Oyenza Studio", MenuCmd::Quit, false),
+        item("退出 Oyenza Studio", MenuCmd::Quit, false),
     ];
     // Only once the separate recorder app is installed: until then the
     // island doesn't mention recording at all.
     if recorder {
-        items.splice(0..0, [item("Record this screen", MenuCmd::RecordScreen, false), MenuItem::Separator]);
+        items.splice(0..0, [item("录制此屏幕", MenuCmd::RecordScreen, false), MenuItem::Separator]);
     }
     // A new version first, until it is installed.
     if let Some(v) = update {
-        items.splice(0..0, [item(&format!("Update to Oyenza Studio {v}…"), MenuCmd::Update, false), MenuItem::Separator]);
+        items.splice(0..0, [item(&format!("更新至 Oyenza Studio {v}…"), MenuCmd::Update, false), MenuItem::Separator]);
     }
     items
 }
@@ -170,31 +170,31 @@ pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, recorder: boo
 fn apple_music_menu() -> MenuItem {
     let on = crate::paths::apple_music_token_path().exists();
     let mut items = vec![
-        item("Use token from clipboard", MenuCmd::AppleMusicToken, false),
-        item("How to get the token", MenuCmd::AppleMusicHelp, false),
+        item("从剪贴板读取 Token", MenuCmd::AppleMusicToken, false),
+        item("如何获取 Token", MenuCmd::AppleMusicHelp, false),
     ];
     if on {
         items.push(MenuItem::Separator);
-        items.push(item("Remove token", MenuCmd::AppleMusicForget, false));
+        items.push(item("清除 Token", MenuCmd::AppleMusicForget, false));
     }
-    MenuItem::Sub { label: if on { "Apple Music lyrics: on".into() } else { "Apple Music lyrics".into() }, items }
+    MenuItem::Sub { label: if on { "Apple Music 歌词：已开启".into() } else { "Apple Music 歌词".into() }, items }
 }
 
 /// Oyenza, optional: sign in with a code from oyenza.app, then what the
 /// island may show, and signing out.
 fn oyenza_menu(s: &Settings, link: &OyenzaLink) -> MenuItem {
     let items = match link {
-        OyenzaLink::Off => vec![item("Sign in to Oyenza…", MenuCmd::OyenzaSignIn, false)],
-        OyenzaLink::Connecting { .. } => vec![item("Cancel sign-in", MenuCmd::OyenzaCancel, false)],
+        OyenzaLink::Off => vec![item("登录 Oyenza…", MenuCmd::OyenzaSignIn, false)],
+        OyenzaLink::Connecting { .. } => vec![item("取消登录", MenuCmd::OyenzaCancel, false)],
         OyenzaLink::Connected { account } => vec![
-            MenuItem::Info { label: format!("Connected as {account}") },
-            item("Show amounts on the island", MenuCmd::ToggleOyenzaAmounts, s.oyenza_show_amounts),
-            item("Open oyenza.app", MenuCmd::OyenzaOpen, false),
+            MenuItem::Info { label: format!("已连接账户：{account}") },
+            item("在灵动岛上显示金额", MenuCmd::ToggleOyenzaAmounts, s.oyenza_show_amounts),
+            item("打开 oyenza.app", MenuCmd::OyenzaOpen, false),
             MenuItem::Separator,
-            item("Disconnect", MenuCmd::OyenzaDisconnect, false),
+            item("断开连接", MenuCmd::OyenzaDisconnect, false),
         ],
     };
-    MenuItem::Sub { label: "Oyenza".into(), items }
+    MenuItem::Sub { label: "Oyenza 账户".into(), items }
 }
 
 fn build(menu: HMENU, items: &[MenuItem], cmds: &mut Vec<MenuCmd>) {

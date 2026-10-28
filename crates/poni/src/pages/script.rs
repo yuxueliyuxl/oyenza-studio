@@ -164,7 +164,7 @@ pub fn take_drop(st: &mut AppState, paths: &[String]) -> bool {
     let read = std::fs::metadata(path).ok().filter(|m| m.len() <= model::MAX_FILE_BYTES).and_then(|_| std::fs::read(path).ok());
     match read.as_deref().and_then(model::decode) {
         Some(text) => set_text(st, text),
-        None => note(st, "No text in that file"),
+        None => note(st, "该文件中没有文本内容"),
     }
     true
 }
@@ -187,8 +187,8 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
 
 fn draw_empty(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let top = Rect::new(area.x, area.y, area.w, area.h - 52.0);
-    super::empty_state(ui, top, Icon::Script, "Paste a script to read", "Copy it anywhere, then press Paste. Or drop a .txt file here.");
-    let label = "Paste";
+    super::empty_state(ui, top, Icon::Script, "粘贴脚本即可提词朗读", "从任意位置复制文本后点击“粘贴”，或将 .txt 文件拖放到此处。");
+    let label = "粘贴";
     let w = ui.pill_width(label, true, false);
     let r = Rect::new(area.center().x - w / 2.0, top.bottom() - 6.0, w, PILL_REGULAR);
     if ui.pill(wid("script.paste.empty"), r, label, Some(Icon::Clipboard), PillStyle::Primary(st.accent)).clicked {
@@ -317,13 +317,13 @@ fn draw_bar(ui: &mut Ui, st: &mut AppState, area: Rect, y: f32, lines: &[Line], 
     let wpm = st.store.script.pace();
     let r = &st.script;
     let (label, icon) = if r.playing() {
-        ("Pause", Icon::Pause)
+        ("暂停", Icon::Pause)
     } else if r.done {
-        ("Read again", Icon::Reset)
+        ("重新开始", Icon::Reset)
     } else if r.active {
-        ("Resume", Icon::Play)
+        ("继续", Icon::Play)
     } else {
-        ("Read", Icon::Play)
+        ("提词朗读", Icon::Play)
     };
     let w = ui.pill_width(label, true, false).max(READ_MIN_W);
     let read_r = Rect::new(area.x, y, w, PILL_REGULAR);
@@ -347,7 +347,7 @@ fn draw_bar(ui: &mut Ui, st: &mut AppState, area: Rect, y: f32, lines: &[Line], 
         set_pace(st, lines, wpm.saturating_sub(WPM_STEP));
     }
     x += ICON_BTN;
-    let pace = format!("{wpm} wpm");
+    let pace = format!("{wpm} 词/分");
     ui.c.text(&pace, Rect::new(x, y, PACE_LABEL_W, PILL_REGULAR), &TextStyle::body().weight(Weight::Semibold).tabular().center());
     x += PACE_LABEL_W;
     if ui.icon_button(wid("script.faster"), btn(x), Icon::Plus, palette::TEXT_DIM, 14.0).clicked {
@@ -360,7 +360,7 @@ fn draw_bar(ui: &mut Ui, st: &mut AppState, area: Rect, y: f32, lines: &[Line], 
     if ui.icon_button(wid("script.clear"), clear_r, Icon::Trash, palette::TEXT_DIM, 14.0).clicked {
         set_text(st, String::new());
     }
-    let paste = "Paste";
+    let paste = "粘贴";
     let pw = ui.pill_width(paste, true, false);
     let paste_r = Rect::new(clear_r.x - PILL_GAP - pw, y, pw, PILL_REGULAR);
     if ui.pill(wid("script.paste"), paste_r, paste, Some(Icon::Clipboard), PillStyle::Utility).clicked {
@@ -375,11 +375,11 @@ fn draw_bar(ui: &mut Ui, st: &mut AppState, area: Rect, y: f32, lines: &[Line], 
         ui.c.icon(Icon::Circle, Rect::from_center(record_r.center(), RECORD_ICON, RECORD_ICON), palette::TEXT_DIM);
         if resp.clicked {
             st.cmd(Command::RecordScreen);
-            note(st, "Opening the recorder");
+            note(st, "正在打开录屏工具");
         }
         // The island has no tooltips: the status line says what the dot does.
         if resp.hovered {
-            hint = Some("Record this screen");
+            hint = Some("录制此屏幕");
         }
         right = record_r.x;
     }
@@ -407,16 +407,16 @@ fn status_line(ui: &mut Ui, st: &AppState, now: f64, lines: &[Line], wpm: u32, f
         return text.into();
     }
     if focused {
-        return "Space pauses · ↑↓ pace".into();
+        return "空格暂停 · ↑↓调速".into();
     }
     if st.script.playing() {
         let left = st.script.remaining(now, lines, wpm);
-        return if left < 60.0 { "Under a minute left".into() } else { format!("About {} min left", (left / 60.0).round() as u32) };
+        return if left < 60.0 { "剩余不足 1 分钟".into() } else { format!("约剩余 {} 分钟", (left / 60.0).round() as u32) };
     }
     let (full, short) = match st.script_hidden {
-        Some(true) => ("Hidden from screen shares", "Hidden from shares"),
-        _ if cfg!(target_os = "macos") => ("Shows in full-screen shares", "Shows in shares"),
-        _ => ("Shows in screen shares", "Shows in shares"),
+        Some(true) => ("对屏幕共享隐藏", "共享已隐"),
+        _ if cfg!(target_os = "macos") => ("在全屏共享中显示", "共享可见"),
+        _ => ("在屏幕共享中显示", "共享可见"),
     };
     if ui.c.measure(full, style, f32::MAX).0 <= room { full } else { short }.into()
 }
@@ -434,7 +434,7 @@ fn draw_drop_hint(ui: &mut Ui, area: Rect) {
     ui.c.stroke_rrect(r, 12.0, Color::white(0.35), 1.5);
     let c = r.center();
     ui.c.icon(Icon::File, Rect::from_center(Point::new(c.x, c.y - 14.0), 24.0, 24.0), Color::white(0.8));
-    ui.c.text("Drop a .txt file to read it", Rect::new(r.x, c.y + 6.0, r.w, 20.0), &TextStyle::headline().center());
+    ui.c.text("拖放 .txt 文件即可载入提词", Rect::new(r.x, c.y + 6.0, r.w, 20.0), &TextStyle::headline().center());
 }
 
 fn smoothstep(x: f32) -> f32 {

@@ -76,20 +76,20 @@ pub fn days_in_month(year: i32, month: u8) -> u8 {
     }
 }
 
-pub const WEEKDAY_SHORT: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-pub const MONTH_SHORT: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+pub const WEEKDAY_SHORT: [&str; 7] = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+pub const MONTH_SHORT: [&str; 12] = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
-/// "Sat 24 Oct"
+/// "10月24日 周六"
 pub fn fmt_date_short(t: &LocalDateTime) -> String {
     format!(
-        "{} {} {}",
-        WEEKDAY_SHORT[t.weekday() as usize],
+        "{}月{}日 {}",
+        t.month,
         t.day,
-        MONTH_SHORT[(t.month.clamp(1, 12) - 1) as usize]
+        WEEKDAY_SHORT[t.weekday() as usize]
     )
 }
 
-/// "19:05" or "7:05 PM"
+/// "19:05" or "下午 7:05"
 pub fn fmt_clock(t: &LocalDateTime, use_24h: bool) -> String {
     if use_24h {
         format!("{:02}:{:02}", t.hour, t.minute)
@@ -98,7 +98,7 @@ pub fn fmt_clock(t: &LocalDateTime, use_24h: bool) -> String {
             0 => 12,
             h => h,
         };
-        format!("{}:{:02} {}", h, t.minute, if t.hour < 12 { "AM" } else { "PM" })
+        format!("{} {}:{:02}", if t.hour < 12 { "上午" } else { "下午" }, h, t.minute)
     }
 }
 
@@ -150,7 +150,7 @@ mod tests {
         // 24 Oct 2026 is a Saturday.
         let t = LocalDateTime { year: 2026, month: 10, day: 24, ..Default::default() };
         assert_eq!(t.weekday(), 6);
-        assert_eq!(fmt_date_short(&t), "Sat 24 Oct");
+        assert_eq!(fmt_date_short(&t), "10月24日 周六");
         // 1 Jan 1970 was a Thursday.
         assert_eq!(weekday_from_days(0), 4);
     }

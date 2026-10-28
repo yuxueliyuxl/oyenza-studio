@@ -626,6 +626,7 @@ impl App {
                 self.check_fps();
             }
             self.try_add_tray();
+            self.set_peek_hotkey(true);
             services::power::register_session(self.helper);
             if !crate::autostart::packaged() {
                 self.updater = Some(crate::updates::Updater::start(paths::data_dir().join("update.json"), &mut self.st, crate::updates::unix_now()));
@@ -1166,7 +1167,11 @@ impl App {
                 Some(LRESULT(0))
             }
             WM_HOTKEY if wp.0 == HOTKEY_PEEK as usize => {
-                self.toggle_readout();
+                if self.st.game.active {
+                    self.toggle_readout();
+                } else {
+                    self.toggle_island();
+                }
                 self.request_frame();
                 Some(LRESULT(0))
             }
@@ -1298,12 +1303,12 @@ impl App {
     fn use_apple_music_token(&mut self) {
         let text = services::clipboard::read_text(self.hwnd).unwrap_or_default();
         let Some(token) = poni_core::applemusic::clean_user_token(&text) else {
-            self.st.notify(Icon::Lyrics, palette::ORANGE, "No Apple Music token copied", "Copy media-user-token first", 6.0, None);
+            self.st.notify(Icon::Lyrics, palette::ORANGE, "未复制 Apple Music 凭据", "请先复制 media-user-token", 6.0, None);
             return;
         };
         if let Err(e) = services::secret::save(&paths::apple_music_token_path(), &token) {
             pwarn!("apple music: cannot save the token ({e})");
-            self.st.notify(Icon::Lyrics, palette::ORANGE, "Couldn't save the token", "Details in poni.log", 5.0, None);
+            self.st.notify(Icon::Lyrics, palette::ORANGE, "无法保存凭据", "详情请见 poni.log", 5.0, None);
             return;
         }
         pinfo!("apple music: token saved");
@@ -1312,13 +1317,13 @@ impl App {
             s.apple_music_token_changed();
         }
         self.refetch_lyrics();
-        self.st.notify(Icon::Lyrics, palette::BLUE, "Checking the Apple Music token", "One moment", 4.0, None);
+        self.st.notify(Icon::Lyrics, palette::BLUE, "正在校验 Apple Music 凭据", "请稍候", 4.0, None);
     }
 
     fn forget_apple_music_token(&mut self) {
         if let Err(e) = services::secret::delete(&paths::apple_music_token_path()) {
             pwarn!("apple music: cannot remove the token ({e})");
-            self.st.notify(Icon::Lyrics, palette::ORANGE, "Couldn't remove the token", "Details in poni.log", 5.0, None);
+            self.st.notify(Icon::Lyrics, palette::ORANGE, "无法移除凭据", "详情请见 poni.log", 5.0, None);
             return;
         }
         pinfo!("apple music: token removed");
@@ -1326,15 +1331,15 @@ impl App {
             s.apple_music_token_changed();
         }
         self.refetch_lyrics();
-        self.st.notify(Icon::Lyrics, palette::BLUE, "Apple Music lyrics off", "Lyrics from LRCLIB only", 4.0, None);
+        self.st.notify(Icon::Lyrics, palette::BLUE, "已停用 Apple Music 歌词", "仅从 LRCLIB 获取歌词", 4.0, None);
     }
 
     fn on_apple_music(&mut self, status: AppleMusicStatus) {
         let (color, title, subtitle) = match status {
-            AppleMusicStatus::Accepted => (palette::GREEN, "Apple Music lyrics on", "LRCLIB fills in the rest"),
-            AppleMusicStatus::Rejected => (palette::ORANGE, "Apple Music token not accepted", "Copy a fresh one from music.apple.com"),
-            AppleMusicStatus::Unreachable => (palette::ORANGE, "Can't reach Apple Music", "Token saved; trying again later"),
-            AppleMusicStatus::NoAccess => (palette::ORANGE, "No lyrics from Apple Music", "They need an Apple Music subscription"),
+            AppleMusicStatus::Accepted => (palette::GREEN, "已启用 Apple Music 歌词", "其余曲目由 LRCLIB 补充"),
+            AppleMusicStatus::Rejected => (palette::ORANGE, "Apple Music 凭据未通过", "请从 music.apple.com 重新复制"),
+            AppleMusicStatus::Unreachable => (palette::ORANGE, "无法连接 Apple Music", "凭据已保存，稍后将自动重试"),
+            AppleMusicStatus::NoAccess => (palette::ORANGE, "无法获取 Apple Music 歌词", "此功能需要订阅 Apple Music"),
         };
         self.st.notify(Icon::Lyrics, color, title, subtitle, 6.0, None);
     }
@@ -1385,7 +1390,7 @@ impl App {
             }
             OyenzaEvent::Connected { account } => {
                 self.end_sign_in();
-                self.st.notify(Icon::Check, palette::GREEN, "Connected to Oyenza", format!("as {account}"), 6.0, Some(NoticeAction::OpenPage(PageKind::Oyenza)));
+                self.st.notify(Icon::Check, palette::GREEN, "已连接至 Oyenza", format!("账号：{account}"), 6.0, Some(NoticeAction::OpenPage(PageKind::Oyenza)));
                 self.st.oyenza.link = OyenzaLink::Connected { account };
             }
             OyenzaEvent::ConnectFailed(code) => {
@@ -1445,9 +1450,9 @@ impl App {
                 }
                 o.error = Some(oyenza::note_error_text(&code).into());
             }
-            OyenzaEvent::Undone => self.st.oyenza.flash = Some(("Taken back".into(), now + 3.0)),
+            OyenzaEvent::Undone => self.st.oyenza.flash = Some(("已撤销".into(), now + 3.0)),
             OyenzaEvent::UndoFailed(code) => {
-                let line = if code == "too_late" { "Too late to undo here. Change it in oyenza.app" } else { "Couldn't undo. Change it in oyenza.app" };
+                let line = if code == "too_late" { "撤销已超时，请在 oyenza.app 中修改" } else { "无法撤销，请在 oyenza.app 中修改" };
                 self.st.oyenza.flash = Some((line.into(), now + 5.0));
             }
             OyenzaEvent::Disconnected { by_server } => {
@@ -1455,7 +1460,7 @@ impl App {
                 self.st.oyenza = crate::state::OyenzaState::default();
                 self.st.health = None;
                 let (title, subtitle) =
-                    if by_server { ("Oyenza disconnected", "Sign in again in Settings") } else { ("Disconnected from Oyenza", "Sign in again any time in Settings") };
+                    if by_server { ("Oyenza 连接已断开", "请在设置中重新登录") } else { ("已断开与 Oyenza 的连接", "可在设置中随时重新登录") };
                 self.st.notify(Icon::Unlink, palette::TEXT_DIM, title, subtitle, 6.0, None);
             }
         }
@@ -1705,7 +1710,7 @@ impl App {
                     }
                     Err(e) => {
                         pwarn!("settings.json not reloaded: {e}");
-                        self.st.notify(crate::icons::Icon::Sliders, palette::ORANGE, "Settings not reloaded", "settings.json has an error; see poni.log", 5.0, None);
+                        self.st.notify(crate::icons::Icon::Sliders, palette::ORANGE, "设置未重新加载", "settings.json 格式有误；详情见 poni.log", 5.0, None);
                     }
                 }
             }
@@ -2247,6 +2252,24 @@ impl App {
         self.apply_fullscreen(now);
     }
 
+    /// Toggle expanding or collapsing the island with global hotkey.
+    fn toggle_island(&mut self) {
+        if self.expanded {
+            self.st.pinned = false;
+            self.collapse();
+            self.maybe_schedule_collapse();
+        } else {
+            if self.fullscreen_hidden {
+                self.fullscreen_hidden = false;
+                unsafe {
+                    let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
+                }
+            }
+            self.st.pinned = true;
+            self.expand();
+        }
+    }
+
     /// Alt+Shift+F: hide the readout, or show it again (peeks only: show it
     /// for a few seconds, or hide it again before its time).
     fn toggle_readout(&mut self) {
@@ -2356,7 +2379,6 @@ impl App {
         let want = self.st.settings.game_stats && self.fullscreen_on && !self.st.settings.hide_in_fullscreen && self.selftest.is_none();
         if want != self.st.game.active {
             self.st.game.active = want;
-            self.set_peek_hotkey(want);
             if !want {
                 self.game_peek_until = 0.0;
                 self.game_hidden = false;
@@ -3556,7 +3578,7 @@ impl App {
                     let text = services::clipboard::read_text(self.hwnd).map(|t| poni_core::script::clean(&t)).filter(|t| !t.is_empty());
                     match text {
                         Some(text) => pages::script::set_text(&mut self.st, text),
-                        None => pages::script::note(&mut self.st, "Copy your script first"),
+                        None => pages::script::note(&mut self.st, "请先复制您的提词脚本"),
                     }
                 }
                 Command::SaveSettings => {
@@ -3749,7 +3771,7 @@ impl App {
             PhoneEvent::Received { from, paths, .. } => {
                 pd.transfer = None;
                 let n = paths.len();
-                let title = format!("{} from {from} {} on the Shelf", files_label(n), if n == 1 { "is" } else { "are" });
+                let title = format!("来自 {from} 的 {} 已存入文件架", files_label(n));
                 pd.outcome = Some((title.clone(), true, until));
                 let added: Vec<String> = paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
                 self.st.store.shelf.add_paths(&added, self.st.unix);
@@ -3759,14 +3781,14 @@ impl App {
                 self.st.save();
                 pinfo!("phone drop: {} from {from}", files_label(n));
                 if !self.expanded {
-                    self.st.notify(Icon::Phone, palette::GREEN, title, "Open the Shelf to see them", 6.0, Some(NoticeAction::OpenPage(PageKind::Shelf)));
+                    self.st.notify(Icon::Phone, palette::GREEN, title, "打开文件架查看", 6.0, Some(NoticeAction::OpenPage(PageKind::Shelf)));
                 }
                 self.st.chime();
                 self.maybe_schedule_collapse();
             }
             PhoneEvent::Failed { from, reason, detail, .. } => {
                 pd.transfer = None;
-                pd.outcome = Some((format!("Nothing kept from {from}. {reason}."), false, until));
+                pd.outcome = Some((format!("未保存来自 {from} 的内容。{reason}。"), false, until));
                 pwarn!("phone drop: transfer from {from} failed: {reason} {detail}");
                 self.maybe_schedule_collapse();
             }
@@ -3824,8 +3846,8 @@ impl App {
                     let p = self.st.paired.remove(i);
                     pinfo!("pair drop: removed a paired phone");
                     if let Some(pd) = self.st.phone.as_mut() {
-                        pd.outcome = Some((format!("{} can't send to this PC any more", p.name), false, now + pages::shelf::PHONE_OUTCOME_S));
-                        pd.outcome_line = Some("Pair it again any time from Pair a phone.".into());
+                        pd.outcome = Some((format!("{} 无法再向此电脑发送文件", p.name), false, now + pages::shelf::PHONE_OUTCOME_S));
+                        pd.outcome_line = Some("可随时在“扫码配对”中重新配对。".into());
                     }
                 }
             }
@@ -3858,12 +3880,12 @@ impl App {
                 pinfo!("pair drop: a phone finished pairing");
                 if let Some(pd) = self.st.phone.as_mut() {
                     pd.view = PhoneView::Lan;
-                    pd.outcome = Some((format!("{name} is paired"), true, until));
-                    pd.outcome_line = Some("It can now send from any network, even with this panel closed.".into());
+                    pd.outcome = Some((format!("{name} 已成功配对"), true, until));
+                    pd.outcome_line = Some("现在即便关闭此面板，也能在任何网络下发送。".into());
                 }
                 if !self.hovering {
                     // The island closes now that nothing waits: say it on the pill.
-                    self.st.notify(Icon::Phone, palette::GREEN, format!("{name} is paired"), "It can send from any network now", 6.0, Some(NoticeAction::OpenPage(PageKind::Shelf)));
+                    self.st.notify(Icon::Phone, palette::GREEN, format!("{name} 已成功配对"), "现可在任何网络下发送", 6.0, Some(NoticeAction::OpenPage(PageKind::Shelf)));
                 }
                 self.st.chime();
                 self.maybe_schedule_collapse();
@@ -3872,13 +3894,13 @@ impl App {
                 PeerEvent::Hello { .. } => pinfo!("pair drop: a paired phone connected"),
                 PeerEvent::Progress { files, done: 0, .. } => {
                     if !self.expanded {
-                        self.st.notify(Icon::Phone, palette::GREEN, format!("{phone} is sending {}", files_label(files)), "They go straight onto the Shelf", 4.0, None);
+                        self.st.notify(Icon::Phone, palette::GREEN, format!("{phone} 正在发送 {}", files_label(files)), "文件将直接保存到文件架", 4.0, None);
                     }
                 }
                 PeerEvent::Progress { .. } => {}
                 PeerEvent::Received { paths } => {
                     let n = paths.len();
-                    let title = format!("{} from {phone} {} on the Shelf", files_label(n), if n == 1 { "is" } else { "are" });
+                    let title = format!("来自 {phone} 的 {} 已存入文件架", files_label(n));
                     let added: Vec<String> = paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
                     self.st.store.shelf.add_paths(&added, self.st.unix);
                     for p in added {
@@ -3891,7 +3913,7 @@ impl App {
                         pd.outcome_line = None;
                     }
                     if !self.expanded {
-                        self.st.notify(Icon::Phone, palette::GREEN, title, "Open the Shelf to see them", 6.0, Some(NoticeAction::OpenPage(PageKind::Shelf)));
+                        self.st.notify(Icon::Phone, palette::GREEN, title, "打开文件架查看", 6.0, Some(NoticeAction::OpenPage(PageKind::Shelf)));
                     }
                     self.st.chime();
                     self.maybe_schedule_collapse();
@@ -3899,9 +3921,9 @@ impl App {
                 PeerEvent::Failed { reason, detail } => {
                     pwarn!("pair drop: a send from a paired phone failed: {reason} {detail}");
                     if !self.expanded {
-                        self.st.notify(Icon::Phone, palette::TEXT, format!("Nothing kept from {phone}"), format!("{reason}."), 6.0, None);
+                        self.st.notify(Icon::Phone, palette::TEXT, format!("未接收来自 {phone} 的内容"), format!("{reason}。"), 6.0, None);
                     } else if let Some(pd) = self.st.phone.as_mut() {
-                        pd.outcome = Some((format!("Nothing kept from {phone}. {reason}."), false, until));
+                        pd.outcome = Some((format!("未接收来自 {phone} 的内容。{reason}。"), false, until));
                         pd.outcome_line = None;
                     }
                 }
@@ -4165,7 +4187,7 @@ fn paired_phones(pairs: Vec<poni_core::pairdrop::Pair>) -> Vec<PairedPhone> {
 }
 
 fn files_label(n: usize) -> String {
-    format!("{n} {}", if n == 1 { "file" } else { "files" })
+    format!("{n} 个文件")
 }
 
 #[cfg(test)]

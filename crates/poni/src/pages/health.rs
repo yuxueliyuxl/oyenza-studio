@@ -28,7 +28,7 @@ const MID_GAP: f32 = 24.0;
 const SIGNED_OUT_W: f32 = 400.0;
 /// The goal line sits at this fraction of the chart height (room for over-goal days).
 const GOAL_AT: f32 = 0.72;
-const WEEKDAY_LETTER: [&str; 7] = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAY_LETTER: [&str; 7] = ["日", "一", "二", "三", "四", "五", "六"];
 
 /// Steps are green, the colour people know from activity rings.
 const STEPS: Color = palette::GREEN;
@@ -92,10 +92,10 @@ fn draw_today(ui: &mut Ui, st: &AppState, h: &HealthSnapshot, steps: u32, goal: 
     let small_st = TextStyle::new(ts::HEADLINE).color(palette::TEXT_DIM).top();
     let y = r.y + 8.0;
     let (bw, bh) = ui.c.measure(&big, &big_st, r.w);
-    let (_, sh) = ui.c.measure("steps", &small_st, r.w);
+    let (_, sh) = ui.c.measure("步", &small_st, r.w);
     ui.c.text(&big, Rect::new(r.x, y, bw + 2.0, bh), &big_st);
     let sy = y + (bh - sh) * 0.81;
-    let goal_text = format!("/ {} steps", fmt_steps(goal));
+    let goal_text = format!("/ {} 步", fmt_steps(goal));
     ui.c.text(&goal_text, Rect::new(r.x + bw + 6.0, sy, (r.w - bw - 6.0).max(0.0), sh), &small_st);
 
     let strong = TextStyle::footnote().weight(Weight::Semibold);
@@ -104,10 +104,10 @@ fn draw_today(ui: &mut Ui, st: &AppState, h: &HealthSnapshot, steps: u32, goal: 
     if steps >= goal {
         let ir = Rect::new(line.x, line.center().y - 6.5, 13.0, 13.0);
         ui.c.icon(Icon::Check, ir, STEPS);
-        text_run(ui, line.x + 18.0, line, "Goal reached", &strong.color(STEPS));
+        text_run(ui, line.x + 18.0, line, "已达成目标", &strong.color(STEPS));
     } else {
         let x = text_run(ui, line.x, line, &fmt_steps(goal - steps), &strong);
-        text_run(ui, x, line, " to go", &dim);
+        text_run(ui, x, line, " 步待完成", &dim);
     }
 
     // Distance and active energy, when the phone has them.
@@ -117,7 +117,7 @@ fn draw_today(ui: &mut Ui, st: &AppState, h: &HealthSnapshot, steps: u32, goal: 
         extra.push(fmt_distance(m));
     }
     if let Some(k) = today.and_then(|d| d.active_kcal) {
-        extra.push(format!("{} kcal", fmt_steps(k)));
+        extra.push(format!("{} 千卡", fmt_steps(k)));
     }
     if !extra.is_empty() {
         ui.c.text(&extra.join(" · "), Rect::new(r.x, y + 64.0, r.w, 18.0), &dim);
@@ -128,9 +128,9 @@ fn draw_today(ui: &mut Ui, st: &AppState, h: &HealthSnapshot, steps: u32, goal: 
         // Not updated for a day: the phone sends only while Oyenza is open on it.
         ui.c.text(&updated_text(st, h.updated_at), Rect::new(r.x, y + 92.0, r.w, 15.0), &faint);
         let hint = TextStyle::caption().color(palette::TEXT_DIM);
-        ui.c.text("Open Oyenza on your phone to update", Rect::new(r.x, y + 107.0, (right - r.x).max(r.w), 15.0), &hint);
+        ui.c.text("在手机上打开 Oyenza 以同步最新数据", Rect::new(r.x, y + 107.0, (right - r.x).max(r.w), 15.0), &hint);
     } else {
-        ui.c.text(&format!("From {} via Oyenza", h.source.name()), Rect::new(r.x, y + 92.0, r.w, 15.0), &faint);
+        ui.c.text(&format!("数据来自 {} · 通过 Oyenza 同步", h.source.name()), Rect::new(r.x, y + 92.0, r.w, 15.0), &faint);
         ui.c.text(&updated_text(st, h.updated_at), Rect::new(r.x, y + 107.0, r.w, 15.0), &faint);
     }
 }
@@ -143,13 +143,13 @@ fn updated_text(st: &AppState, at: i64) -> String {
     if ago <= since_midnight {
         let secs = since_midnight - ago;
         let t = LocalDateTime { hour: (secs / 3600) as u8, minute: ((secs / 60) % 60) as u8, second: 0, ..local };
-        return format!("Updated {}", fmt_clock(&t, st.settings.use_24h));
+        return format!("更新于 {}", fmt_clock(&t, st.settings.use_24h));
     }
     let days = (ago - since_midnight - 1) / 86_400 + 1;
     if days == 1 {
-        "Updated yesterday".to_string()
+        "昨天更新".to_string()
     } else {
-        format!("Updated {}", fmt_date_short(&local.add_days(-days)))
+        format!("更新于 {}", fmt_date_short(&local.add_days(-days)))
     }
 }
 
@@ -161,11 +161,11 @@ fn updated_text(st: &AppState, at: i64) -> String {
 /// Oyenza can't send them yet): the text says where to turn it on.
 fn draw_not_connected(ui: &mut Ui, st: &mut AppState, r: Rect, center_y: f32) {
     let signed_in = matches!(st.oyenza.link, OyenzaLink::Connected { .. });
-    let title = "Your steps, from your phone";
+    let title = "从手机同步您的运动步数";
     let body = if signed_in {
-        "Open Oyenza on your iPhone or Android and, under your steps in Health (Sehat), turn on Show on Oyenza Studio. Your daily steps then show here."
+        "请在 iPhone 或 Android 手机上打开 Oyenza，并在“健康 (Health)”步数下方开启“在 Oyenza Studio 上显示”。今日步数随后即可在此呈现。"
     } else {
-        "Oyenza on your iPhone or Android reads them from Apple Health or Health Connect. Sign in to Oyenza to see them here."
+        "手机端 Oyenza 可从 Apple 健康或健康连接 (Health Connect) 读取步数。登录 Oyenza 即可在此同步查看。"
     };
     let title_st = TextStyle::headline().wrap().top();
     let body_st = TextStyle::footnote().color(palette::TEXT_DIM).wrap().top();
@@ -181,14 +181,14 @@ fn draw_not_connected(ui: &mut Ui, st: &mut AppState, r: Rect, center_y: f32) {
     let tag_y = body_y + body_h + tag_gap;
     match st.oyenza.link {
         OyenzaLink::Off => {
-            let label = "Sign in with Oyenza";
+            let label = "登录 Oyenza";
             let w = ui.pill_width(label, false, true).min(r.w);
             if ui.pill(wid("health.sign-in"), Rect::new(r.x, tag_y, w, PILL_SMALL), label, None, PillStyle::Primary(palette::ORANGE)).clicked {
                 st.cmd(Command::Oyenza(OyenzaCmd::SignIn));
             }
         }
         OyenzaLink::Connecting { .. } => {
-            let label = "Show the sign-in code";
+            let label = "显示登录验证码";
             let w = ui.pill_width(label, false, true).min(r.w);
             if ui.pill(wid("health.show-code"), Rect::new(r.x, tag_y, w, PILL_SMALL), label, None, PillStyle::Primary(palette::ORANGE)).clicked {
                 st.cmd(Command::SetPage(PageKind::Oyenza));
@@ -196,7 +196,7 @@ fn draw_not_connected(ui: &mut Ui, st: &mut AppState, r: Rect, center_y: f32) {
         }
         // Not a button: the switch is on the phone.
         OyenzaLink::Connected { .. } => {
-            let label = "Off in Oyenza";
+            let label = "手机端未开启";
             let tag_st = TextStyle::caption().weight(Weight::Semibold).color(palette::TEXT_DIM);
             let (tw, _) = ui.c.measure(label, &tag_st, r.w);
             let tag = Rect::new(r.x, tag_y, (tw.ceil() + 20.0).min(r.w), tag_h);
@@ -222,7 +222,7 @@ fn text_run(ui: &mut Ui, x: f32, line: Rect, s: &str, st: &TextStyle) -> f32 {
 fn draw_week_title(ui: &mut Ui, st: &AppState, h: &HealthSnapshot, r: Rect) {
     let total: u32 = h.week(&st.local).iter().filter_map(|(_, s)| *s).sum();
     let label = TextStyle::caption().color(palette::TEXT_FAINT);
-    ui.c.text("This week", r, &label);
+    ui.c.text("本周累计", r, &label);
     ui.c.text(&fmt_steps(total), r, &TextStyle::caption().weight(Weight::Semibold).tabular().right());
 }
 
@@ -296,9 +296,9 @@ pub fn goal_notice(steps: u32, until: f64) -> Notice {
     Notice {
         icon: Icon::Steps,
         color: palette::GREEN,
-        title: format!("{} steps today", fmt_steps(steps)),
+        title: format!("今日已达 {} 步", fmt_steps(steps)),
         title_dim: String::new(),
-        subtitle: "Daily step goal reached".into(),
+        subtitle: "已完成每日步数目标！".into(),
         until,
         action: Some(NoticeAction::OpenPage(PageKind::Health)),
         inline: None,

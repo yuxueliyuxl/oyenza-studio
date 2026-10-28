@@ -91,13 +91,13 @@ const LOCATION_SETTINGS: &str =
     if cfg!(windows) { "ms-settings:privacy-location" } else { "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices" };
 /// The picker's line when location is off, or when the system couldn't say.
 const DENIED_HINT: &str = if cfg!(windows) {
-    "Windows' location is off for Oyenza Studio. Turn it on to find your place, or type it."
+    "Windows 定位服务已对 Oyenza Studio 关闭。请在系统设置中开启，或手动输入地区。"
 } else {
-    "Location Services is off for Oyenza Studio. Turn it on to find your place, or type it."
+    "定位服务已对 Oyenza Studio 关闭。请在系统偏好设置中开启，或手动输入地区。"
 };
 const UNKNOWN_HINT: &str =
-    if cfg!(windows) { "Windows couldn't tell where this PC is. Type your kab/kota." } else { "macOS couldn't tell where this Mac is. Type your kab/kota." };
-const SOUNDS: [(PrayerSound, &str); 3] = [(PrayerSound::Adzan, "Adzan"), (PrayerSound::Tone, "Tone"), (PrayerSound::Silent, "Silent")];
+    if cfg!(windows) { "Windows 无法确定当前电脑位置。请手动输入地区名称。" } else { "macOS 无法确定当前电脑位置。请手动输入地区名称。" };
+const SOUNDS: [(PrayerSound, &str); 3] = [(PrayerSound::Adzan, "唤礼声"), (PrayerSound::Tone, "提示音"), (PrayerSound::Silent, "静音")];
 
 pub fn height(_st: &AppState) -> f32 {
     HEIGHT
@@ -121,10 +121,10 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         return;
     }
     let Some(site) = st.prayer.site() else {
-        super::empty_state(ui, area, Icon::Moon, "No place yet", "Pick your kab/kota to see its times");
-        let w = ui.pill_width("Pick a place", false, true);
+        super::empty_state(ui, area, Icon::Moon, "暂未设置地区", "选择所在地区以查看祈祷时间");
+        let w = ui.pill_width("选择地区", false, true);
         let r = Rect::new(area.center().x - w / 2.0, area.bottom() - PILL_SMALL, w, PILL_SMALL);
-        if ui.pill(wid("prayer.pick"), r, "Pick a place", None, PillStyle::Utility).clicked {
+        if ui.pill(wid("prayer.pick"), r, "选择地区", None, PillStyle::Utility).clicked {
             st.prayer.picking = true;
         }
         return;
@@ -146,7 +146,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         ui.c.text(&count, Rect::new(x, area.y + COUNT_Y, cw + 2.0, COUNT_H), &cs);
         let ax = x + cw + AT_GAP;
         let aw = (x + left_w - ax).max(0.0);
-        let when = if n.day > day { "tomorrow" } else { "today" };
+        let when = if n.day > day { "明天" } else { "今天" };
         ui.c.text(&site.hhmm(n.at), Rect::new(ax, area.y + COUNT_Y + 2.0, aw, 19.0), &TextStyle::headline().tabular());
         ui.c.text(when, Rect::new(ax, area.y + COUNT_Y + 21.0, aw, 15.0), &TextStyle::caption().color(palette::TEXT_DIM));
     }
@@ -159,7 +159,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let arc = Rect::new(gx, area.y, area.right() - gx, FOOT_Y);
     let place_pt = st.prayer.place.as_ref().map(|p| (p.lat, p.lng)).unwrap_or_default();
     let q = prayer::qibla(place_pt.0, place_pt.1);
-    let info = format!("Imsak {} \u{b7} Terbit {} \u{b7} Qibla {q:.0}\u{b0} {}", site.hhmm(times.imsak), site.hhmm(times.terbit), compass(q));
+    let info = format!("封斋 {} \u{b7} 日出 {} \u{b7} 朝向 {q:.0}\u{b0} {}", site.hhmm(times.imsak), site.hhmm(times.terbit), compass(q));
     ui.c.text(&info, Rect::new(gx, area.y, arc.w, INFO_H), &TextStyle::caption().color(palette::TEXT_DIM).right());
     draw_day(ui, arc, &site, &times, day, now, next, accent);
 
@@ -167,13 +167,13 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     // what plays at prayer time, and the countdown before it.
     let fy = area.y + FOOT_Y;
     let py = fy + (FOOT_H - PILL_SMALL) / 2.0;
-    let change_w = ui.pill_width("Change place", false, true);
-    if ui.pill(wid("prayer.change"), Rect::new(x, py, change_w, PILL_SMALL), "Change place", None, PillStyle::Utility).clicked {
+    let change_w = ui.pill_width("更换地区", false, true);
+    if ui.pill(wid("prayer.change"), Rect::new(x, py, change_w, PILL_SMALL), "更换地区", None, PillStyle::Utility).clicked {
         st.prayer.picking = true;
         st.prayer.query.clear();
     }
-    let read_w = ui.pill_width("Read Quran", true, true);
-    if ui.pill(wid("prayer.quran"), Rect::new(x + change_w + 8.0, py, read_w, PILL_SMALL), "Read Quran", Some(Icon::Open), PillStyle::Utility).clicked {
+    let read_w = ui.pill_width("阅读古兰经", true, true);
+    if ui.pill(wid("prayer.quran"), Rect::new(x + change_w + 8.0, py, read_w, PILL_SMALL), "阅读古兰经", Some(Icon::Open), PillStyle::Utility).clicked {
         st.cmd(Command::OpenUrl(QURAN.into()));
     }
 
@@ -185,7 +185,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         st.settings.prayer.sound = SOUNDS[i].0;
         st.cmd(Command::SaveSettings);
     }
-    let before = "10 min before";
+    let before = "提前 10 分钟提醒";
     let bw = ui.c.measure(before, &TextStyle::body(), 200.0).0.ceil() + 10.0 + 30.0;
     let on = st.settings.prayer.remind_before_min > 0;
     if super::settings::switch_row(ui, wid("prayer.before"), Rect::new(area.right() - bw, fy, bw, FOOT_H), before, Some(on), accent) {
@@ -318,17 +318,17 @@ fn place_line(st: &AppState) -> String {
     let p = &st.prayer;
     if st.settings.prayer.follow_location {
         match p.locate {
-            Locate::Found { km } if km > 30.0 => format!("Nearest to you, {km:.0} km away"),
-            Locate::Found { .. } => "From your location".into(),
-            Locate::Asking => "Finding your location".into(),
-            Locate::Denied if p.suggested => "Location is off: from your time zone".into(),
-            _ if p.suggested => "From your time zone".into(),
-            _ => "Your last location".into(),
+            Locate::Found { km } if km > 30.0 => format!("离您最近，相距 {km:.0} 公里"),
+            Locate::Found { .. } => "根据当前位置".into(),
+            Locate::Asking => "正在获取位置".into(),
+            Locate::Denied if p.suggested => "定位已关闭：根据所在时区".into(),
+            _ if p.suggested => "根据所在时区".into(),
+            _ => "根据上次位置".into(),
         }
     } else if p.suggested {
-        "From your time zone".into()
+        "根据所在时区".into()
     } else {
-        "Picked by you".into()
+        "手动选择".into()
     }
 }
 
@@ -336,13 +336,13 @@ fn place_line(st: &AppState) -> String {
 
 fn picker(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let accent = st.accent;
-    let done_w = ui.pill_width("Done", false, true);
+    let done_w = ui.pill_width("完成", false, true);
     let done = Rect::new(area.right() - done_w, area.y + (SEARCH_H - PILL_SMALL) / 2.0, done_w, PILL_SMALL);
-    let loc_label = "Use my location";
+    let loc_label = "使用当前位置";
     let loc_w = ui.pill_width(loc_label, true, true);
     let loc = Rect::new(done.x - 8.0 - loc_w, done.y, loc_w, PILL_SMALL);
     let input = Rect::new(area.x, area.y, loc.x - 12.0 - area.x, SEARCH_H);
-    let resp = ui.text_input_row(wid("prayer.search"), input, &mut st.prayer.query, "Type a kab/kota, like Bandung", 40, accent, Some(Icon::Moon));
+    let resp = ui.text_input_row(wid("prayer.search"), input, &mut st.prayer.query, "输入地区名称，如 万隆 (Bandung)", 40, accent, Some(Icon::Moon));
     let results: Vec<(String, String, String)> = match &st.prayer.places {
         Some(list) => list.search(&st.prayer.query, RESULTS).into_iter().map(|p| (p.id.clone(), p.label.clone(), p.prov.clone())).collect(),
         None => Vec::new(),
@@ -359,7 +359,7 @@ fn picker(ui: &mut Ui, st: &mut AppState, area: Rect) {
         close(st);
         return;
     }
-    if ui.pill(wid("prayer.done"), done, "Done", None, PillStyle::Utility).clicked || resp.cancelled {
+    if ui.pill(wid("prayer.done"), done, "完成", None, PillStyle::Utility).clicked || resp.cancelled {
         close(st);
         return;
     }
@@ -369,21 +369,21 @@ fn picker(ui: &mut Ui, st: &mut AppState, area: Rect) {
         let hint = match st.prayer.locate {
             Locate::Denied => DENIED_HINT,
             Locate::Unknown => UNKNOWN_HINT,
-            Locate::Far { .. } => "Prayer times know Indonesia's kab/kota and Makkah, Madinah, Jeddah for now.",
-            _ => "Every kab/kota in Kemenag's schedule, and Makkah, Madinah, Jeddah.",
+            Locate::Far { .. } => "祈祷时间目前支持印尼各地区及麦加、麦地那、吉达。",
+            _ => "支持印尼宗教事务部日程中的所有地区，以及麦加、麦地那、吉达。",
         };
         ui.c.text(hint, Rect::new(area.x, top, area.w, 18.0), &TextStyle::footnote().color(palette::TEXT_DIM));
         if st.prayer.locate == Locate::Denied {
-            let w = ui.pill_width("Location settings", true, true);
+            let w = ui.pill_width("系统位置设置", true, true);
             let r = Rect::new(area.x, top + 26.0, w, PILL_SMALL);
-            if ui.pill(wid("prayer.location-settings"), r, "Location settings", Some(Icon::Open), PillStyle::Utility).clicked {
+            if ui.pill(wid("prayer.location-settings"), r, "系统位置设置", Some(Icon::Open), PillStyle::Utility).clicked {
                 st.cmd(Command::OpenUrl(LOCATION_SETTINGS.into()));
             }
         }
         return;
     }
     if results.is_empty() {
-        ui.c.text("No kab/kota with that name", Rect::new(area.x, top, area.w, 18.0), &TextStyle::footnote().color(palette::TEXT_DIM));
+        ui.c.text("未找到匹配的地区", Rect::new(area.x, top, area.w, 18.0), &TextStyle::footnote().color(palette::TEXT_DIM));
         return;
     }
     let col_w = (area.w - 16.0) / 2.0;
@@ -423,7 +423,7 @@ fn close(st: &mut AppState) {
 
 /// The prayers' names as the island says them (`It's time for Ashar`).
 pub fn moment_title(p: Prayer) -> String {
-    format!("It's time for {}", p.name())
+    format!("到了 {} 祈祷时间", p.name())
 }
 
 #[cfg(test)]

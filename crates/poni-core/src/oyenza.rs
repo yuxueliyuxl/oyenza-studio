@@ -18,7 +18,7 @@
 //! The HTTP and the sealed key live in the Windows crate
 //! (`services/oyenza.rs`).
 
-use crate::datetime::{days_from_civil, civil_from_days, weekday_from_days, LocalDateTime, MONTH_SHORT, WEEKDAY_SHORT};
+use crate::datetime::{days_from_civil, civil_from_days, weekday_from_days, LocalDateTime, WEEKDAY_SHORT};
 use crate::health::HealthSnapshot;
 use crate::urlenc::with_query;
 use serde::{Deserialize, Serialize};
@@ -560,7 +560,7 @@ pub fn strip(today: &str) -> Vec<(DayPick, String)> {
         .rev()
         .map(|n| (DayPick::Past(n), t.map(|d| WEEKDAY_SHORT[weekday_from_days(d - n as i64) as usize].to_string()).unwrap_or_default()))
         .collect();
-    out.extend([(DayPick::Past(1), "Yesterday".into()), (DayPick::Today, "Today".into()), (DayPick::Tomorrow, "Tomorrow".into()), (DayPick::Later, "Later".into())]);
+    out.extend([(DayPick::Past(1), "昨天".into()), (DayPick::Today, "今天".into()), (DayPick::Tomorrow, "明天".into()), (DayPick::Later, "以后".into())]);
     out
 }
 
@@ -579,16 +579,16 @@ pub fn pick_date(pick: DayPick, today: &str) -> Option<String> {
 /// "TOMORROW · SUN 25 OCT", "LATER · THE NEXT 30 DAYS".
 pub fn day_heading(pick: DayPick, today: &str, count: usize) -> String {
     let name = match pick {
-        DayPick::Today => "TODAY".to_string(),
-        DayPick::Past(1) => "YESTERDAY".to_string(),
+        DayPick::Today => "今天".to_string(),
+        DayPick::Past(1) => "昨天".to_string(),
         DayPick::Past(_) => pick_date(pick, today).and_then(|d| short_date(&d)).unwrap_or_default().to_uppercase(),
-        DayPick::Tomorrow => return format!("TOMORROW · {}", short_date(&next_day(today)).unwrap_or_default().to_uppercase()),
-        DayPick::Later => return "LATER · THE NEXT 30 DAYS".into(),
+        DayPick::Tomorrow => return format!("明天 · {}", short_date(&next_day(today)).unwrap_or_default().to_uppercase()),
+        DayPick::Later => return "以后 · 未来 30 天".into(),
     };
     match count {
         0 => name,
-        1 => format!("{name} · 1 TRANSACTION"),
-        n => format!("{name} · {n} TRANSACTIONS"),
+        1 => format!("{name} · 1 笔交易"),
+        n => format!("{name} · {n} 笔交易"),
     }
 }
 
@@ -598,10 +598,10 @@ pub fn day_totals(day: &Day, show: bool) -> String {
     let sum = |t: &str| if show { t.to_string() } else { masked(t) };
     let mut parts = Vec::new();
     if day.in_sum > 0.0 {
-        parts.push(format!("in {}", sum(&day.in_text)));
+        parts.push(format!("收入 {}", sum(&day.in_text)));
     }
     if day.out > 0.0 {
-        parts.push(format!("out {}", sum(&day.out_text)));
+        parts.push(format!("支出 {}", sum(&day.out_text)));
     }
     parts.join("  ·  ")
 }
@@ -609,10 +609,10 @@ pub fn day_totals(day: &Day, show: bool) -> String {
 /// What an empty day says.
 pub fn empty_day_text(pick: DayPick) -> &'static str {
     match pick {
-        DayPick::Today => "Nothing logged today yet",
-        DayPick::Past(_) => "Nothing logged that day",
-        DayPick::Tomorrow => "Nothing due tomorrow",
-        DayPick::Later => "Nothing due in the next 30 days",
+        DayPick::Today => "今天暂无记录",
+        DayPick::Past(_) => "该日暂无记录",
+        DayPick::Tomorrow => "明天暂无到期项目",
+        DayPick::Later => "未来 30 天内暂无到期项目",
     }
 }
 
@@ -715,17 +715,17 @@ impl Seen {
 pub fn due_label(due: &str, today: &str) -> String {
     let (Some(d), Some(t)) = (day_number(due), day_number(today)) else { return due.to_string() };
     match d - t {
-        0 => "Today".into(),
-        1 => "Tomorrow".into(),
+        0 => "今天".into(),
+        1 => "明天".into(),
         _ => short_date(due).unwrap_or_else(|| due.to_string()),
     }
 }
 
-/// "Mon 26 Oct" for a YYYY-MM-DD day.
+/// "10月26日 周一" for a YYYY-MM-DD day.
 pub fn short_date(day: &str) -> Option<String> {
     let d = day_number(day)?;
     let (_, m, dom) = civil_from_days(d);
-    Some(format!("{} {} {}", WEEKDAY_SHORT[weekday_from_days(d) as usize], dom, MONTH_SHORT[(m.clamp(1, 12) - 1) as usize]))
+    Some(format!("{}月{}日 {}", m, dom, WEEKDAY_SHORT[weekday_from_days(d) as usize]))
 }
 
 fn day_number(day: &str) -> Option<i64> {
@@ -820,23 +820,23 @@ pub fn has_amount(text: &str) -> bool {
 /// What the island says when a note couldn't be saved (the text stays in the field).
 pub fn note_error_text(code: &str) -> &'static str {
     match code {
-        "no_amount" | "empty_text" => "Add an amount, like kopi 25rb",
-        "no_wallet" => "Add a wallet in Oyenza first",
-        "no_space" => "Make a space in Oyenza first",
-        "no_rate" => "That currency can't be converted yet",
-        "ai_busy" | "rate_limited" => "Oyenza is busy. Try again in a minute",
-        "offline" => "Couldn't reach Oyenza. Your text is still here",
-        _ => "Couldn't save it. Your text is still here",
+        "no_amount" | "empty_text" => "请填写金额，如 咖啡 25",
+        "no_wallet" => "请先在 Oyenza 中添加钱包",
+        "no_space" => "请先在 Oyenza 中创建空间",
+        "no_rate" => "暂不支持该币种转换",
+        "ai_busy" | "rate_limited" => "Oyenza 繁忙，请一分钟后重试",
+        "offline" => "无法连接至 Oyenza，输入内容已保留",
+        _ => "无法保存，输入内容已保留",
     }
 }
 
 /// Title and subtitle when signing in stops without a key.
 pub fn connect_failure_text(code: &str) -> (&'static str, &'static str) {
     match code {
-        "expired" | "invalid_code" => ("Sign-in code expired", "Start again from the tray"),
-        "denied" => ("Not connected", "The code was refused in oyenza.app"),
-        "offline" => ("Can't reach Oyenza", "Check the connection and try again"),
-        _ => ("Couldn't sign in to Oyenza", "Try again from the tray"),
+        "expired" | "invalid_code" => ("配对码已失效", "请在托盘菜单中重新发起登录"),
+        "denied" => ("未连接", "配对码在 oyenza.app 中被拒绝"),
+        "offline" => ("无法连接至 Oyenza", "请检查网络连接后重试"),
+        _ => ("无法登录 Oyenza", "请在托盘菜单中重试"),
     }
 }
 
@@ -1050,9 +1050,9 @@ mod tests {
         assert!(has_amount("parkir goceng"));
         assert!(!has_amount("kopi enak"));
         assert!(!has_amount("gocengan")); // only the whole word
-        assert_eq!(note_error_text("no_wallet"), "Add a wallet in Oyenza first");
-        assert_eq!(note_error_text("whatever"), "Couldn't save it. Your text is still here");
-        assert_eq!(connect_failure_text("expired").0, "Sign-in code expired");
+        assert_eq!(note_error_text("no_wallet"), "请先在 Oyenza 中添加钱包");
+        assert_eq!(note_error_text("whatever"), "无法保存，输入内容已保留");
+        assert_eq!(connect_failure_text("expired").0, "配对码已失效");
         assert_eq!(code_time_left(581.2), "9:42");
         assert_eq!(code_time_left(-3.0), "0:00");
         assert_eq!(hex_color("#0060AF"), Some((0, 0x60, 0xAF)));
@@ -1191,13 +1191,13 @@ mod tests {
         assert_eq!(pick_date(DayPick::Today, "2026-03-01").as_deref(), Some("2026-03-01"));
         assert_eq!(pick_date(DayPick::Past(1), "2026-03-01").as_deref(), Some("2026-02-28"));
         assert_eq!(pick_date(DayPick::Tomorrow, today), None);
-        assert_eq!(day_heading(DayPick::Today, today, 5), "TODAY · 5 TRANSACTIONS");
-        assert_eq!(day_heading(DayPick::Past(1), today, 1), "YESTERDAY · 1 TRANSACTION");
-        assert_eq!(day_heading(DayPick::Past(2), today, 0), "THU 22 OCT");
-        assert_eq!(day_heading(DayPick::Tomorrow, today, 3), "TOMORROW · SUN 25 OCT");
-        assert_eq!(day_heading(DayPick::Later, today, 3), "LATER · THE NEXT 30 DAYS");
-        assert_eq!(short_date("2026-10-26").as_deref(), Some("Mon 26 Oct"));
-        assert_eq!(empty_day_text(DayPick::Later), "Nothing due in the next 30 days");
+        assert_eq!(day_heading(DayPick::Today, today, 5), "今天 · 5 笔交易");
+        assert_eq!(day_heading(DayPick::Past(1), today, 1), "昨天 · 1 笔交易");
+        assert_eq!(day_heading(DayPick::Past(2), today, 0), "10月22日 周四");
+        assert_eq!(day_heading(DayPick::Tomorrow, today, 3), "明天 · 10月25日 周日");
+        assert_eq!(day_heading(DayPick::Later, today, 3), "以后 · 未来 30 天");
+        assert_eq!(short_date("2026-10-26").as_deref(), Some("10月26日 周一"));
+        assert_eq!(empty_day_text(DayPick::Later), "未来 30 天内暂无到期项目");
     }
 
     #[test]

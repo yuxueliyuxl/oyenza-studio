@@ -14,7 +14,7 @@ use crate::gfx::{TextStyle, Weight};
 use crate::icons::Icon;
 use crate::state::{AppState, PowerState, SysStats};
 use crate::ui::{wid_n, Ui};
-use poni_core::datetime::{civil_from_days, days_from_civil, fmt_clock, month_grid, weekday_from_days, LocalDateTime, MONTH_SHORT, WEEKDAY_SHORT};
+use poni_core::datetime::{civil_from_days, days_from_civil, fmt_clock, month_grid, weekday_from_days, LocalDateTime, WEEKDAY_SHORT};
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::sysmon::Module;
 
@@ -39,10 +39,10 @@ const RING_W: f32 = 4.0;
 const RING_TRACK: Color = Color::white(0.14);
 const RING_ICON: f32 = 12.0;
 
-const WEEKDAY_LONG: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MONTH_LONG: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const WEEKDAY_LONG: [&str; 7] = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+const MONTH_LONG: [&str; 12] = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 /// Monday-first initials.
-const INITIALS: [&str; 7] = ["M", "T", "W", "T", "F", "S", "S"];
+const INITIALS: [&str; 7] = ["一", "二", "三", "四", "五", "六", "日"];
 
 pub fn height(_st: &AppState) -> f32 {
     HEIGHT
@@ -80,14 +80,14 @@ fn draw_date(ui: &mut Ui, st: &AppState, r: Rect, top: f32) {
     }
     let wd = t.weekday() as usize % 7;
     let y = top;
-    ui.c.text(&WEEKDAY_LONG[wd].to_uppercase(), Rect::new(r.x, y, r.w, INITIALS_H - 2.0), &TextStyle::caption().weight(Weight::Bold).color(st.accent));
+    ui.c.text(WEEKDAY_LONG[wd], Rect::new(r.x, y, r.w, INITIALS_H - 2.0), &TextStyle::caption().weight(Weight::Bold).color(st.accent));
     ui.c.text(&t.day.to_string(), Rect::new(r.x - 2.0, y + 14.0, r.w + 2.0, 58.0), &TextStyle::hero().weight(Weight::Semibold));
     ui.c.text(
-        &format!("{} {}", MONTH_LONG[(t.month - 1) as usize], t.year),
+        &format!("{}年 {}", t.year, MONTH_LONG[(t.month - 1) as usize]),
         Rect::new(r.x, y + 74.0, r.w, 18.0),
         &TextStyle::body().color(palette::TEXT_DIM),
     );
-    ui.c.text(&format!("Week {}", iso_week(&t)), Rect::new(r.x, y + 92.0, r.w, 16.0), &TextStyle::footnote().color(palette::TEXT_FAINT));
+    ui.c.text(&format!("第 {} 周", iso_week(&t)), Rect::new(r.x, y + 92.0, r.w, 16.0), &TextStyle::footnote().color(palette::TEXT_FAINT));
 }
 
 // ------------------------------------------------------------------ calendar
@@ -117,8 +117,8 @@ fn draw_calendar(ui: &mut Ui, st: &AppState, r: Rect, top: f32, with_title: bool
         // Without the big date block the title names the day as well.
         let st_title = TextStyle::body().weight(Weight::Semibold);
         let tr = Rect::new(r.x + 4.0, y, r.w - 4.0, TITLE_H - 4.0);
-        let day = format!("{} {} {}", WEEKDAY_SHORT[t.weekday() as usize % 7], t.day, MONTH_LONG[(t.month - 1) as usize]);
-        let full = format!("{day} {}", t.year);
+        let day = format!("{}月{}日 {}", t.month, t.day, WEEKDAY_SHORT[t.weekday() as usize % 7]);
+        let full = format!("{}年{day}", t.year);
         let title = if ui.c.measure(&full, &st_title, 10_000.0).0 <= tr.w { full } else { day };
         ui.c.text(&title, tr, &st_title);
         y += TITLE_H;
@@ -232,53 +232,53 @@ fn cpu_tile(s: &SysStats) -> Tile {
     }
     let f = s.cpu.clamp(0.0, 1.0);
     let detail = match f {
-        f if f < 0.10 => "Idle",
-        f if f < 0.35 => "Light load",
-        f if f < 0.70 => "Moderate",
-        f if f < 0.90 => "Busy",
-        _ => "Very busy",
+        f if f < 0.10 => "空闲",
+        f if f < 0.35 => "低负载",
+        f if f < 0.70 => "中等负载",
+        f if f < 0.90 => "较繁忙",
+        _ => "高负荷",
     };
     Tile { icon: Icon::Cpu, label: "CPU", frac: Some(f), color: load_color(f), value: pct(f), detail: detail.into(), detail_short: String::new() }
 }
 
 fn memory_tile(s: &SysStats) -> Tile {
     if !s.valid || s.mem_total == 0 {
-        return placeholder(Icon::Memory, "Memory");
+        return placeholder(Icon::Memory, "内存");
     }
     let f = (s.mem_used as f64 / s.mem_total as f64).clamp(0.0, 1.0) as f32;
     let detail = format!("{} / {}", gb_one_decimal(s.mem_used), fmt_bytes(s.mem_total));
     let short = gb_one_decimal(s.mem_used) + " GB";
-    Tile { icon: Icon::Memory, label: "Memory", frac: Some(f), color: load_color(f), value: pct(f), detail, detail_short: short }
+    Tile { icon: Icon::Memory, label: "内存", frac: Some(f), color: load_color(f), value: pct(f), detail, detail_short: short }
 }
 
 fn disk_tile(s: &SysStats) -> Tile {
     if !s.valid || s.disk_total == 0 {
-        return placeholder(Icon::Disk, "Disk");
+        return placeholder(Icon::Disk, "磁盘");
     }
     let free = s.disk_free.min(s.disk_total);
     let used = 1.0 - (free as f64 / s.disk_total as f64) as f32;
-    let detail = format!("free of {}", fmt_bytes(s.disk_total));
-    Tile { icon: Icon::Disk, label: "Disk", frac: Some(used), color: load_color(used), value: fmt_bytes(free), detail, detail_short: "free".into() }
+    let detail = format!("可用（总计 {}）", fmt_bytes(s.disk_total));
+    Tile { icon: Icon::Disk, label: "磁盘", frac: Some(used), color: load_color(used), value: fmt_bytes(free), detail, detail_short: "可用".into() }
 }
 
 fn battery_tile(p: &PowerState) -> Tile {
     let percent = p.percent.min(100);
     let f = percent as f32 / 100.0;
     let (detail, color) = if p.charging {
-        ("Charging", palette::GREEN)
+        ("充电中", palette::GREEN)
     } else if p.on_ac {
-        (if percent >= 99 { "Fully charged" } else { "Plugged in" }, palette::GREEN)
+        (if percent >= 99 { "已充满" } else { "已接通电源" }, palette::GREEN)
     } else if percent <= 20 {
-        ("Low battery", palette::RED)
+        ("电量偏低", palette::RED)
     } else if p.saver {
-        ("Battery saver", palette::YELLOW)
+        ("节电模式", palette::YELLOW)
     } else {
-        ("On battery", Color::white(0.92))
+        ("使用电池中", Color::white(0.92))
     };
-    let short = if p.charging || p.on_ac { "Plugged in" } else { "On battery" };
+    let short = if p.charging || p.on_ac { "接通电源" } else { "电池供电" };
     Tile {
         icon: if p.charging { Icon::Bolt } else { Icon::Battery },
-        label: "Battery",
+        label: "电池",
         frac: Some(f),
         color,
         value: format!("{percent}%"),
@@ -290,10 +290,10 @@ fn battery_tile(p: &PowerState) -> Tile {
 fn uptime_tile(st: &AppState) -> Tile {
     let s = &st.stats;
     if !s.valid {
-        return placeholder(Icon::Clock, "Uptime");
+        return placeholder(Icon::Clock, "开机时长");
     }
     let (detail, detail_short) = boot_label(&st.local, s.uptime_s, st.settings.use_24h).unwrap_or_default();
-    Tile { icon: Icon::Clock, label: "Uptime", frac: None, color: Color::white(0.92), value: fmt_uptime(s.uptime_s), detail, detail_short }
+    Tile { icon: Icon::Clock, label: "开机时长", frac: None, color: Color::white(0.92), value: fmt_uptime(s.uptime_s), detail, detail_short }
 }
 
 // ------------------------------------------------------------------ formatting
@@ -357,12 +357,12 @@ fn boot_label(now: &LocalDateTime, uptime_s: u64, use_24h: bool) -> Option<(Stri
     let clock = fmt_clock(&boot, use_24h);
     let ago = today - boot_day;
     Some(if ago <= 0 {
-        (format!("Since {clock}"), "Since today".to_string())
+        (format!("自今日 {clock} 起"), "自今日起".to_string())
     } else if ago < 7 {
         let wd = WEEKDAY_SHORT[weekday_from_days(boot_day) as usize % 7];
-        (format!("Since {wd} {clock}"), format!("Since {wd}"))
+        (format!("自{wd} {clock} 起"), format!("自{wd}起"))
     } else {
-        let s = format!("Since {} {}", day, MONTH_SHORT[(month.clamp(1, 12) - 1) as usize]);
+        let s = format!("自{}月{}日起", month, day);
         (s.clone(), s)
     })
 }

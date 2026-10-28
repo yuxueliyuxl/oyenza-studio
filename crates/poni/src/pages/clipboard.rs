@@ -75,7 +75,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     if st.clip.is_empty() {
         st.ui.clip_scroll = 0.0;
         st.ui.clip_flash = None;
-        super::empty_state(ui, area, Icon::Clipboard, "Nothing copied yet", "Text you copy shows up here, kept in memory only");
+        super::empty_state(ui, area, Icon::Clipboard, "剪贴板暂无内容", "复制的文本将显示在此处，仅保存在内存中，安全不落盘");
         return;
     }
     let list = Rect::new(rest.x, rest.y + HEAD_GAP, rest.w, (rest.h - HEAD_GAP).max(0.0));
@@ -95,9 +95,9 @@ fn draw_summary(ui: &mut Ui, st: &mut AppState, r: Rect, undo: bool) {
     let mut text_right = r.right();
 
     if undo {
-        let w = snap(ui.pill_width("Undo", true, true), scale);
+        let w = snap(ui.pill_width("撤销", true, true), scale);
         let pr = Rect::new(snap(r.right() - w, scale), pill_y, w, PILL_SMALL);
-        if ui.pill(wid("clip.undo"), pr, "Undo", Some(Icon::Undo), PillStyle::UtilityAccent(st.accent)).clicked {
+        if ui.pill(wid("clip.undo"), pr, "撤销", Some(Icon::Undo), PillStyle::UtilityAccent(st.accent)).clicked {
             if let Some(u) = take_undo() {
                 restore(&mut st.clip, &u);
             }
@@ -106,9 +106,9 @@ fn draw_summary(ui: &mut Ui, st: &mut AppState, r: Rect, undo: bool) {
         text_right = pr.x - PILL_GAP;
     } else if pinned < n {
         // Only when something unpinned is left to clear.
-        let w = snap(ui.pill_width("Clear", true, true), scale);
+        let w = snap(ui.pill_width("清空", true, true), scale);
         let pr = Rect::new(snap(r.right() - w, scale), pill_y, w, PILL_SMALL);
-        if ui.pill(wid("clip.clear"), pr, "Clear", Some(Icon::Trash), PillStyle::Utility).clicked {
+        if ui.pill(wid("clip.clear"), pr, "清空", Some(Icon::Trash), PillStyle::Utility).clicked {
             let before: Vec<ClipItem> = st.clip.iter().cloned().collect();
             st.clip.clear();
             let removed = before.iter().filter(|it| !it.pinned).cloned().collect();
@@ -124,9 +124,9 @@ fn draw_summary(ui: &mut Ui, st: &mut AppState, r: Rect, undo: bool) {
         return;
     }
     let pinned = st.clip.iter().filter(|it| it.pinned).count();
-    let mut count = format!("{n} {}", if n == 1 { "item" } else { "items" });
+    let mut count = format!("{n} 项");
     if pinned > 0 {
-        count.push_str(&format!(" \u{b7} {pinned} pinned"));
+        count.push_str(&format!(" \u{b7} {pinned} 项已固定"));
     }
     let count_st = TextStyle::body().weight(Weight::Semibold).color(palette::TEXT_DIM);
     ui.c.text(&count, Rect::new(r.x, r.y, (text_right - r.x).max(0.0), r.h), &count_st);
@@ -282,8 +282,8 @@ fn draw_row(
     if let Some(a) = flash_a {
         ui.c.with_alpha(a, |c| {
             let st = TextStyle::body().weight(Weight::Semibold).color(palette::GREEN).right();
-            let label_w = c.measure("Copied", &st, TRAIL_W).0 + 2.0;
-            c.text("Copied", Rect::new(trail_right - label_w, row.y, label_w, row.h), &st);
+            let label_w = c.measure("已复制", &st, TRAIL_W).0 + 2.0;
+            c.text("已复制", Rect::new(trail_right - label_w, row.y, label_w, row.h), &st);
             c.icon(Icon::Check, Rect::new(trail_right - label_w - 18.0, cy - 7.0, 14.0, 14.0), palette::GREEN);
         });
     } else if resp.hovered && row.y >= list.y - 0.5 && row.bottom() <= list.bottom() + 0.5 {
@@ -315,7 +315,7 @@ fn draw_hint(ui: &mut Ui, r: Rect) {
         return;
     }
     ui.c.text(
-        "Click a row to copy it again",
+        "点击任意条目即可重新复制",
         Rect::new(r.x, r.y + (r.h - 20.0) / 2.0, r.w, 20.0),
         &TextStyle::footnote().color(palette::TEXT_FAINT).center(),
     );
@@ -330,18 +330,18 @@ fn draw_disabled(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let cx = area.center().x;
     ui.c.icon(Icon::Clipboard, Rect::from_center(Point::new(cx, y + 13.0), 26.0, 26.0), Color::white(0.35));
     y += 36.0;
-    ui.c.text("Clipboard history is off", Rect::new(area.x, y, area.w, 20.0), &TextStyle::headline().center());
+    ui.c.text("剪贴板历史记录已关闭", Rect::new(area.x, y, area.w, 20.0), &TextStyle::headline().center());
     y += 22.0;
     ui.c.text(
-        "Keep your last text copies here. Nothing is written to disk.",
+        "在此记录您最近复制的文本。数据仅存放在内存中，不会写入磁盘。",
         Rect::new(area.x, y, area.w, 18.0),
         &TextStyle::footnote().color(palette::TEXT_DIM).center(),
     );
     y += 32.0;
     let scale = ui.c.scale().max(0.5);
-    let w = snap(ui.pill_width("Turn on", false, false), scale);
+    let w = snap(ui.pill_width("开启", false, false), scale);
     let pill = Rect::new(snap(cx - w / 2.0, scale), snap(y, scale), w, PILL_REGULAR);
-    if ui.pill(wid("clip.enable"), pill, "Turn on", None, PillStyle::Primary(st.accent)).clicked {
+    if ui.pill(wid("clip.enable"), pill, "开启", None, PillStyle::Primary(st.accent)).clicked {
         st.settings.clipboard_history = true;
         st.cmd(Command::SaveSettings);
     }

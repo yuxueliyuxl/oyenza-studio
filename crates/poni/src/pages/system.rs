@@ -71,7 +71,7 @@ const PLACEHOLDER: &str = "–";
 /// Built for a Mac: macOS's words where they differ from Windows'.
 const MAC: bool = cfg!(target_os = "macos");
 /// What the page says of a module the system gives no reading for.
-const UNREPORTED: &str = if MAC { "macOS doesn't report this on this Mac" } else { "Windows doesn't report this on this PC" };
+const UNREPORTED: &str = if MAC { "macOS 未在此 Mac 上汇报该数据" } else { "Windows 未在此电脑上汇报该数据" };
 
 // Stats' colours: Windows' own time red, apps blue; performance cores indigo,
 // efficiency cores teal; reads and downloads blue, writes and uploads red.
@@ -146,7 +146,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         return;
     }
     let Some(r) = st.system.latest.clone() else {
-        ui.c.text("Reading…", body, &TextStyle::footnote().color(palette::TEXT_FAINT).center());
+        ui.c.text("正在读取…", body, &TextStyle::footnote().color(palette::TEXT_FAINT).center());
         return;
     };
     let h = st.system.history.clone();
@@ -162,7 +162,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
             match &r.power {
                 Some(p) => draw_power(ui, st, p, &r, &h, &cols),
                 // The page's first reading is the kept minute's: the power comes with the next.
-                None => ui.c.text("Reading…", body, &TextStyle::footnote().color(palette::TEXT_FAINT).center()),
+                None => ui.c.text("正在读取…", body, &TextStyle::footnote().color(palette::TEXT_FAINT).center()),
             }
             Some(())
         }
@@ -325,8 +325,8 @@ fn draw_cpu(ui: &mut Ui, st: &mut AppState, c: &CpuReading, r: &Reading, h: &His
     // Dashboard: temperature (or package power), the load split, the speed.
     let left = match (c.temp_c, c.power_w) {
         (Some(t), _) => temperature(t),
-        (None, Some(w)) => Gauge { frac: Some(w / 125.0), value: format!("{w:.0} W"), label: "Power", color: palette::ORANGE },
-        (None, None) => Gauge::unknown("Temperature"),
+        (None, Some(w)) => Gauge { frac: Some(w / 125.0), value: format!("{w:.0} W"), label: "功耗", color: palette::ORANGE },
+        (None, None) => Gauge::unknown("温度"),
     };
     // The speed against one and a half times the base speed (where turbo usually tops out).
     let right = match c.mhz {
@@ -337,24 +337,24 @@ fn draw_cpu(ui: &mut Ui, st: &mut AppState, c: &CpuReading, r: &Reading, h: &His
     let (dash, rest) = cols.dash.split_top(DASH_H);
     dashboard(ui, dash, &left, &ring, &right);
     let mut rows = vec![
-        Row::dot(SYSTEM_C, "System", fmt_pct(c.kernel)),
-        Row::dot(USER_C, "User", fmt_pct(c.user)),
-        Row::dot(REST_C, "Idle", fmt_pct(1.0 - c.load)),
+        Row::dot(SYSTEM_C, "系统占用", fmt_pct(c.kernel)),
+        Row::dot(USER_C, "用户占用", fmt_pct(c.user)),
+        Row::dot(REST_C, "空闲率", fmt_pct(1.0 - c.load)),
     ];
     match (c.kind_load(CoreKind::Efficiency), c.kind_load(CoreKind::Performance)) {
         (Some(e), Some(p)) if c.hybrid().is_some() => {
-            rows.push(Row::dot(E_CORE_C, "Efficiency cores", fmt_pct(e)));
-            rows.push(Row::dot(P_CORE_C, "Performance cores", fmt_pct(p)));
+            rows.push(Row::dot(E_CORE_C, "能效核心 (E-Core)", fmt_pct(e)));
+            rows.push(Row::dot(P_CORE_C, "性能核心 (P-Core)", fmt_pct(p)));
         }
         _ => {
-            rows.push(Row::plain("Threads", c.logical.to_string()));
-            rows.push(Row::plain("Uptime", fmt_uptime(c.uptime_s)));
+            rows.push(Row::plain("逻辑线程数", c.logical.to_string()));
+            rows.push(Row::plain("已开机时间", fmt_uptime(c.uptime_s)));
         }
     }
-    details(ui, rest, "DETAILS", &rows);
+    details(ui, rest, "详细信息", &rows);
 
     // Usage history, and each core's load under it.
-    let (chart, sub) = history_column(ui, cols.mid, "USAGE HISTORY", "PER CORE");
+    let (chart, sub) = history_column(ui, cols.mid, "使用率历史", "各核心负载");
     chart_box(ui, chart);
     plot(ui, &h.cpu, 1.0, accent, chart.inset(1.0, 1.0), Fill::Gradient);
     let kind_c = |k: CoreKind| match k {
@@ -365,7 +365,7 @@ fn draw_cpu(ui: &mut Ui, st: &mut AppState, c: &CpuReading, r: &Reading, h: &His
     let bars: Vec<(f32, Color)> = c.cores.iter().map(|k| (k.load, kind_c(k.kind))).collect();
     if bars.is_empty() {
         ui.c.fill_rrect(sub, BOX_R, BOX_C);
-        ui.c.text("Not reported", sub, &TextStyle::caption().color(palette::TEXT_FAINT).center());
+        ui.c.text("未汇报", sub, &TextStyle::caption().color(palette::TEXT_FAINT).center());
     } else {
         bar_chart(ui, sub, &bars);
     }
@@ -381,61 +381,61 @@ fn draw_gpu(ui: &mut Ui, st: &mut AppState, g: &GpuReading, h: &History, cols: &
     let left = match (g.temp_c, g.mhz) {
         (Some(t), _) => temperature(t),
         (None, Some(mhz)) => Gauge { frac: None, value: ghz(mhz), label: "GHz", color: accent },
-        (None, None) => Gauge::unknown("Temperature"),
+        (None, None) => Gauge::unknown("温度"),
     };
     let right = match mem_frac {
-        Some(f) => Gauge { frac: Some(f), value: fmt_pct(f), label: "Memory", color: palette::PURPLE },
-        None => Gauge::unknown("Memory"),
+        Some(f) => Gauge { frac: Some(f), value: fmt_pct(f), label: "显存", color: palette::PURPLE },
+        None => Gauge::unknown("显存"),
     };
     let ring = Ring { parts: vec![(g.util, accent)], value: fmt_pct(g.util) };
     let (dash, rest) = cols.dash.split_top(DASH_H);
     dashboard(ui, dash, &left, &ring, &right);
-    let memory = Row::plain(if g.integrated { "Shared memory" } else { "Memory" }, format!("{} / {}", fmt_bytes(g.mem_used), fmt_bytes(g.mem_total)));
+    let memory = Row::plain(if g.integrated { "共享显存" } else { "显存" }, format!("{} / {}", fmt_bytes(g.mem_used), fmt_bytes(g.mem_total)));
     // Apple's GPUs report their renderer (pixels) and tiler (geometry), as Stats shows them.
     let rows = if MAC {
         vec![Row::dot(ENGINE_3D_C, "Renderer", fmt_pct(g.engine_3d)), Row::dot(TILER_C, "Tiler", fmt_pct(g.tiler)), memory]
     } else {
         vec![
-            Row::dot(ENGINE_3D_C, "3D", fmt_pct(g.engine_3d)),
-            Row::dot(COPY_C, "Copy", fmt_pct(g.copy)),
-            Row::dot(DECODE_C, "Video decode", fmt_pct(g.video_decode)),
-            Row::dot(ENCODE_C, "Video encode", fmt_pct(g.video_encode)),
+            Row::dot(ENGINE_3D_C, "3D 渲染", fmt_pct(g.engine_3d)),
+            Row::dot(COPY_C, "数据复制", fmt_pct(g.copy)),
+            Row::dot(DECODE_C, "视频解码", fmt_pct(g.video_decode)),
+            Row::dot(ENCODE_C, "视频编码", fmt_pct(g.video_encode)),
             memory,
         ]
     };
-    details(ui, rest, "ENGINES", &rows);
+    details(ui, rest, "引擎负载", &rows);
 
-    let (chart, sub) = history_column(ui, cols.mid, "USAGE HISTORY", "ENGINES");
+    let (chart, sub) = history_column(ui, cols.mid, "使用率历史", "各引擎分布");
     chart_box(ui, chart);
     plot(ui, &h.gpu, 1.0, accent, chart.inset(1.0, 1.0), Fill::Gradient);
     if MAC {
         labelled_bars(ui, sub, &[(g.engine_3d, ENGINE_3D_C, "Renderer"), (g.tiler, TILER_C, "Tiler")]);
     } else {
-        labelled_bars(ui, sub, &[(g.engine_3d, ENGINE_3D_C, "3D"), (g.copy, COPY_C, "Copy"), (g.video_decode, DECODE_C, "Decode"), (g.video_encode, ENCODE_C, "Encode")]);
+        labelled_bars(ui, sub, &[(g.engine_3d, ENGINE_3D_C, "3D"), (g.copy, COPY_C, "复制"), (g.video_decode, DECODE_C, "解码"), (g.video_encode, ENCODE_C, "编码")]);
     }
 
     // The card itself.
     let (head, rest) = cols.top.split_top(SEP_H);
-    separator(ui, head, "ADAPTER");
+    separator(ui, head, "显卡规格");
     let name_st = TextStyle::footnote().weight(Weight::Semibold).wrap().top().line_spacing(1.25);
     let (name_r, rest) = rest.split_top(36.0);
     ui.c.text(&g.name, name_r.inset(0.0, 2.0), &name_st);
-    let built_in = if MAC { "Built into the chip" } else { "Built into the CPU" };
-    let mut rows = vec![Row::plain("Type", if g.integrated { built_in.into() } else { "Dedicated".into() })];
+    let built_in = if MAC { "内置于芯片" } else { "CPU 集成显卡" };
+    let mut rows = vec![Row::plain("类型", if g.integrated { built_in.into() } else { "独立显卡".into() })];
     if let Some(w) = g.power_w {
-        rows.push(Row::plain("Power", fmt_w(w)));
+        rows.push(Row::plain("功耗", fmt_w(w)));
     }
     if let Some(rpm) = g.fan_rpm {
-        rows.push(Row::plain("Fan", format!("{rpm} RPM")));
+        rows.push(Row::plain("风扇转速", format!("{rpm} RPM")));
     }
     if let Some(mhz) = g.mhz {
-        rows.push(Row::plain("Clock", format!("{mhz} MHz")));
+        rows.push(Row::plain("核心频率", format!("{mhz} MHz")));
     }
     if let Some(t) = g.temp_c {
-        rows.push(Row::plain("Temperature", format!("{t:.0}°C")));
+        rows.push(Row::plain("当前温度", format!("{t:.0}°C")));
     }
     if g.temp_c.is_none() && g.fan_rpm.is_none() {
-        rows.push(Row::plain("Sensors", "Not reported".into()));
+        rows.push(Row::plain("传感器", "未汇报".into()));
     }
     for (row, rect) in rows.iter().zip(stack(rest, DETAIL_H)) {
         row.draw(ui, rect);
@@ -451,13 +451,13 @@ fn draw_memory(ui: &mut Ui, st: &mut AppState, m: &MemoryReading, r: &Reading, h
     let frac = |b: u64| if m.total == 0 { 0.0 } else { b as f32 / m.total as f32 };
     let pressure = m.pressure();
     // macOS swaps to files it adds as it needs them: none yet is 0 MB, never off.
-    let page_label = if MAC { "Swap" } else { "Page file" };
+    let page_label = if MAC { "交换内存" } else { "虚拟内存页面文件" };
     let right = if m.page_total > 0 {
         Gauge { frac: Some(m.page_used as f32 / m.page_total as f32), value: compact_bytes(m.page_used), label: page_label, color: palette::YELLOW }
     } else if MAC {
         Gauge { frac: Some(0.0), value: compact_bytes(0), label: page_label, color: palette::YELLOW }
     } else {
-        Gauge { frac: None, value: "Off".into(), label: page_label, color: palette::YELLOW }
+        Gauge { frac: None, value: "未开启".into(), label: page_label, color: palette::YELLOW }
     };
     let ring = Ring {
         parts: vec![(frac(share(MemPart::App)), APP_C), (frac(share(MemPart::Wired)), WIRED_C), (frac(share(MemPart::Compressed)), COMPRESSED_C)],
@@ -470,19 +470,19 @@ fn draw_memory(ui: &mut Ui, st: &mut AppState, m: &MemoryReading, r: &Reading, h
     if m.commit_limit > 0 {
         pressure_gauge(ui, Point::new(dash.x + g / 2.0 + 2.0, gy + 4.0), g, pressure);
     } else {
-        draw_gauge(ui, Point::new(dash.x + g / 2.0 + 2.0, gy), g, &Gauge::unknown("Pressure"));
+        draw_gauge(ui, Point::new(dash.x + g / 2.0 + 2.0, gy), g, &Gauge::unknown("内存压力"));
     }
     draw_gauge(ui, Point::new(dash.right() - g / 2.0 - 2.0, gy), g, &right);
     let rows = [
-        Row::dot(APP_C, "App", fmt_bytes(share(MemPart::App))),
-        Row::dot(WIRED_C, "Wired", fmt_bytes(share(MemPart::Wired))),
-        Row::dot(COMPRESSED_C, "Compressed", fmt_bytes(share(MemPart::Compressed))),
-        Row::dot(CACHED_C, "Cached", fmt_bytes(share(MemPart::Cached))),
-        Row::dot(REST_C, "Free", fmt_bytes(share(MemPart::Free))),
+        Row::dot(APP_C, "应用程序", fmt_bytes(share(MemPart::App))),
+        Row::dot(WIRED_C, "联动/核心", fmt_bytes(share(MemPart::Wired))),
+        Row::dot(COMPRESSED_C, "已压缩", fmt_bytes(share(MemPart::Compressed))),
+        Row::dot(CACHED_C, "已缓存", fmt_bytes(share(MemPart::Cached))),
+        Row::dot(REST_C, "可用/空闲", fmt_bytes(share(MemPart::Free))),
     ];
-    details(ui, rest, "DETAILS", &rows);
+    details(ui, rest, "详细信息", &rows);
 
-    let (chart, sub) = history_column(ui, cols.mid, "USAGE HISTORY", "USED");
+    let (chart, sub) = history_column(ui, cols.mid, "使用率历史", "已用内存");
     chart_box(ui, chart);
     plot(ui, &h.memory, 1.0, accent, chart.inset(1.0, 1.0), Fill::Gradient);
     let segments: Vec<(f32, Color)> = [(MemPart::App, APP_C), (MemPart::Wired, WIRED_C), (MemPart::Compressed, COMPRESSED_C), (MemPart::Cached, CACHED_C)]
@@ -490,8 +490,8 @@ fn draw_memory(ui: &mut Ui, st: &mut AppState, m: &MemoryReading, r: &Reading, h
         .map(|(p, c)| (frac(share(*p)), *c))
         .collect();
     // macOS has no commit charge to show (its gauge reads the kernel's own pressure level).
-    let committed = if m.commit_limit > 0 && !MAC { format!("Committed {} of {}", fmt_bytes(m.committed), fmt_bytes(m.commit_limit)) } else { String::new() };
-    stacked_meter(ui, sub, &segments, &fmt_bytes(m.used), &format!("of {}", fmt_bytes(m.total)), &committed);
+    let committed = if m.commit_limit > 0 && !MAC { format!("已提交 {} / {}", fmt_bytes(m.committed), fmt_bytes(m.commit_limit)) } else { String::new() };
+    stacked_meter(ui, sub, &segments, &fmt_bytes(m.used), &format!("共 {}", fmt_bytes(m.total)), &committed);
 
     processes(ui, st, cols.top, &r.top_memory, |a| fmt_bytes(a.memory), "");
 }
@@ -501,9 +501,9 @@ fn draw_memory(ui: &mut Ui, st: &mut AppState, m: &MemoryReading, r: &Reading, h
 fn draw_drives(ui: &mut Ui, st: &mut AppState, r: &Reading, h: &History, cols: &Cols) {
     // Every fixed drive and its space.
     let (head, rest) = cols.dash.split_top(SEP_H);
-    separator(ui, head, "DRIVES");
+    separator(ui, head, "本地驱动器");
     if r.drives.is_empty() {
-        ui.c.text("Reading…", rest.split_top(DETAIL_H).0, &TextStyle::footnote().color(palette::TEXT_FAINT));
+        ui.c.text("正在读取…", rest.split_top(DETAIL_H).0, &TextStyle::footnote().color(palette::TEXT_FAINT));
     }
     let slots = stack(rest, DRIVE_H);
     for (d, slot) in r.drives.iter().zip(&slots) {
@@ -513,37 +513,37 @@ fn draw_drives(ui: &mut Ui, st: &mut AppState, r: &Reading, h: &History, cols: &
     let used = DRIVE_H * r.drives.len().min(slots.len()) as f32;
     let room = Rect::new(rest.x, rest.y + used + 6.0, rest.w, (rest.h - used - 6.0).max(0.0));
     let activity = r.disk.map(|d| {
-        let mut rows = vec![Row::dot(IN_C, "Read", fmt_rate(d.read_bps)), Row::dot(OUT_C, "Write", fmt_rate(d.write_bps))];
+        let mut rows = vec![Row::dot(IN_C, "读取", fmt_rate(d.read_bps)), Row::dot(OUT_C, "写入", fmt_rate(d.write_bps))];
         if let Some(a) = d.active {
-            rows.push(Row::plain("Active time", fmt_pct(a)));
+            rows.push(Row::plain("活跃时间", fmt_pct(a)));
         }
         rows
     });
     let beside = activity.as_ref().is_some_and(|rows| room.h >= SEP_H + DETAIL_H * rows.len() as f32);
     if let (true, Some(rows)) = (beside, &activity) {
-        details(ui, room, "ACTIVITY", rows);
+        details(ui, room, "读写活动", rows);
     }
 
     // Reads up, writes down, over the minute.
     let (head, rest) = cols.mid.split_top(SEP_H);
-    separator(ui, head, "USAGE HISTORY");
+    separator(ui, head, "使用率历史");
     let (chart, legend) = if beside { (rest, Rect::default()) } else { rest.split_bottom(DETAIL_H + 2.0) };
     chart_box(ui, chart);
     mirrored(ui, &h.disk_read, IN_C, &h.disk_write, OUT_C, chart);
     if let (false, Some(d)) = (beside, r.disk) {
-        let mut items = vec![(Some(IN_C), format!("Read {}", fmt_rate(d.read_bps))), (Some(OUT_C), format!("Write {}", fmt_rate(d.write_bps)))];
+        let mut items = vec![(Some(IN_C), format!("读取 {}", fmt_rate(d.read_bps))), (Some(OUT_C), format!("写入 {}", fmt_rate(d.write_bps)))];
         if let Some(a) = d.active {
-            items.push((None, format!("Active {}", fmt_pct(a))));
+            items.push((None, format!("活跃 {}", fmt_pct(a))));
         }
         legend_row(ui, legend.offset(0.0, 2.0), &items);
     }
 
-    processes(ui, st, cols.top, &r.top_io, |a| fmt_rate(a.io), "No disk activity");
+    processes(ui, st, cols.top, &r.top_io, |a| fmt_rate(a.io), "无磁盘读写活动");
 }
 
 fn drive_row(ui: &mut Ui, d: &Drive, r: Rect) {
     let line = Rect::new(r.x, r.y + 2.0, r.w, 18.0);
-    let free = format!("{} free", fmt_bytes(d.free));
+    let free = format!("可用 {}", fmt_bytes(d.free));
     let free_st = TextStyle::footnote().tabular().right().color(palette::TEXT_DIM);
     let fw = ui.c.measure(&free, &free_st, r.w).0;
     ui.c.text(&free, Rect::new(line.right() - fw - 2.0, line.y, fw + 2.0, line.h), &free_st);
@@ -567,7 +567,7 @@ fn drive_row(ui: &mut Ui, d: &Drive, r: Rect) {
 fn draw_network(ui: &mut Ui, n: &NetReading, h: &History, cols: &Cols) {
     // Download and upload side by side, big, as Stats shows them.
     let (dash, rest) = cols.dash.split_top(DASH_H);
-    for (half, (color, label, rate)) in dash.inset(0.0, 14.0).columns(2, 8.0).iter().zip([(IN_C, "Download", n.down_bps), (OUT_C, "Upload", n.up_bps)]) {
+    for (half, (color, label, rate)) in dash.inset(0.0, 14.0).columns(2, 8.0).iter().zip([(IN_C, "下载", n.down_bps), (OUT_C, "上传", n.up_bps)]) {
         let (value_r, label_r) = half.split_top(half.h * 0.62);
         let value = if n.online { fmt_rate(rate) } else { PLACEHOLDER.into() };
         ui.c.text(&value, value_r, &TextStyle::value().tabular().center());
@@ -577,34 +577,34 @@ fn draw_network(ui: &mut Ui, n: &NetReading, h: &History, cols: &Cols) {
         ui.c.fill_rrect(Rect::new(x, label_r.center().y - 3.5, 7.0, 7.0), 2.0, color);
         ui.c.text(label, Rect::new(x + 10.0, label_r.y, lw, label_r.h), &lst);
     }
-    let mut rows = vec![Row::plain("Interface", if n.adapter.is_empty() { PLACEHOLDER.into() } else { n.adapter.clone() })];
-    rows.push(Row::plain("Status", if n.online { "Connected".into() } else { "Offline".into() }));
-    rows.push(Row::plain("Address", n.ipv4.clone().unwrap_or_else(|| PLACEHOLDER.into())));
-    rows.push(Row::plain("MAC", if n.mac.is_empty() { PLACEHOLDER.into() } else { n.mac.clone() }));
-    rows.push(Row::plain("Link speed", if n.link_bps > 0 { fmt_link(n.link_bps) } else { PLACEHOLDER.into() }));
-    details(ui, rest, "DETAILS", &rows);
+    let mut rows = vec![Row::plain("网卡接口", if n.adapter.is_empty() { PLACEHOLDER.into() } else { n.adapter.clone() })];
+    rows.push(Row::plain("联网状态", if n.online { "已连接".into() } else { "离线".into() }));
+    rows.push(Row::plain("IP 地址", n.ipv4.clone().unwrap_or_else(|| PLACEHOLDER.into())));
+    rows.push(Row::plain("MAC 地址", if n.mac.is_empty() { PLACEHOLDER.into() } else { n.mac.clone() }));
+    rows.push(Row::plain("协商速率", if n.link_bps > 0 { fmt_link(n.link_bps) } else { PLACEHOLDER.into() }));
+    details(ui, rest, "详细信息", &rows);
 
     // Downloads up, uploads down, over the minute.
     let (head, chart) = cols.mid.split_top(SEP_H);
-    separator(ui, head, "USAGE HISTORY");
+    separator(ui, head, "使用率历史");
     chart_box(ui, chart);
     if n.online {
         mirrored(ui, &h.net_down, IN_C, &h.net_up, OUT_C, chart);
     } else {
-        ui.c.text("No network adapter is connected", chart, &TextStyle::caption().color(palette::TEXT_FAINT).center());
+        ui.c.text("未连接任何网络适配器", chart, &TextStyle::caption().color(palette::TEXT_FAINT).center());
     }
 
     let (head, rest) = cols.top.split_top(SEP_H);
-    separator(ui, head, "SINCE STARTUP");
+    separator(ui, head, "本次开机累计");
     let (totals, rest) = rest.split_top(2.0 * DETAIL_H + 4.0);
-    let rows = [Row::dot(IN_C, "Received", fmt_bytes(n.received)), Row::dot(OUT_C, "Sent", fmt_bytes(n.sent))];
+    let rows = [Row::dot(IN_C, "累计接收", fmt_bytes(n.received)), Row::dot(OUT_C, "累计发送", fmt_bytes(n.sent))];
     for (row, rect) in rows.iter().zip(stack(totals, DETAIL_H)) {
         row.draw(ui, rect);
     }
     let (head, rest) = rest.split_top(SEP_H);
-    separator(ui, head, "LAST MINUTE");
+    separator(ui, head, "近 1 分钟峰值");
     let peak = |s: &Series| if s.is_empty() { PLACEHOLDER.into() } else { fmt_rate(f64::from(s.max())) };
-    let rows = [Row::dot(IN_C, "Peak download", peak(&h.net_down)), Row::dot(OUT_C, "Peak upload", peak(&h.net_up))];
+    let rows = [Row::dot(IN_C, "最高下载速度", peak(&h.net_down)), Row::dot(OUT_C, "最高上传速度", peak(&h.net_up))];
     for (row, rect) in rows.iter().zip(stack(rest, DETAIL_H)) {
         row.draw(ui, rect);
     }
@@ -632,32 +632,32 @@ fn draw_battery(ui: &mut Ui, b: &BatteryReading, cols: &Cols) {
     battery_glyph(ui, Point::new(dash.center().x - 26.0, dash.center().y), percent, color, b.on_ac);
     ui.c.text(&format!("{percent}%"), Rect::new(dash.center().x + 12.0, dash.y, dash.right() - dash.center().x - 12.0, dash.h), &TextStyle::display().tabular());
     let state = if b.charging {
-        "Charging"
+        "充电中"
     } else if b.on_ac {
         if percent >= 99 {
-            "Fully charged"
+            "已充满"
         } else {
-            "Not charging"
+            "未充电 (已接通电源)"
         }
     } else {
-        "Discharging"
+        "使用电池放电中"
     };
     let time = match (b.on_ac, b.secs_left) {
         (false, Some(s)) => fmt_time_left(s),
         _ => PLACEHOLDER.into(),
     };
     let rows = [
-        Row::dot(color, "Level", format!("{percent}%")),
-        Row::plain("Source", if b.on_ac { "Power adapter".into() } else { "Battery".into() }),
-        Row::plain("State", state.into()),
-        Row::plain("Time left", time),
-        Row::plain(if MAC { "Low Power Mode" } else { "Battery saver" }, if b.saver { "On".into() } else { "Off".into() }),
+        Row::dot(color, "当前电量", format!("{percent}%")),
+        Row::plain("供电来源", if b.on_ac { "电源适配器".into() } else { "电池供电".into() }),
+        Row::plain("充放电状态", state.into()),
+        Row::plain("预计剩余时间", time),
+        Row::plain(if MAC { "低电量模式" } else { "节电模式" }, if b.saver { "已开启".into() } else { "未开启".into() }),
     ];
-    details(ui, rest, "DETAILS", &rows);
+    details(ui, rest, "详细信息", &rows);
 
     // Health: today's full charge against the design.
     let (head, rest) = cols.mid.split_top(SEP_H);
-    separator(ui, head, "HEALTH");
+    separator(ui, head, "电池健康度");
     let (dial, rest) = rest.split_top(DASH_H);
     match b.health() {
         Some(hl) => {
@@ -665,22 +665,22 @@ fn draw_battery(ui: &mut Ui, b: &BatteryReading, cols: &Cols) {
             let ring = Ring { parts: vec![(hl.min(1.0), c)], value: fmt_pct(hl.min(1.0)) };
             draw_ring(ui, dial.center(), RING.min(dial.h - 8.0), &ring);
         }
-        None => ui.c.text("Health not reported", dial, &TextStyle::footnote().color(palette::TEXT_FAINT).center()),
+        None => ui.c.text("未汇报电池健康度", dial, &TextStyle::footnote().color(palette::TEXT_FAINT).center()),
     }
     let wh = |mwh: Option<u32>| mwh.map_or(PLACEHOLDER.into(), |v| format!("{:.1} Wh", f64::from(v) / 1000.0));
-    let rows = [Row::plain("Full charge", wh(b.full_mwh)), Row::plain("Design", wh(b.design_mwh))];
+    let rows = [Row::plain("当前满充容量", wh(b.full_mwh)), Row::plain("出厂设计容量", wh(b.design_mwh))];
     for (row, rect) in rows.iter().zip(stack(rest.inset(0.0, 4.0), DETAIL_H)) {
         row.draw(ui, rect);
     }
 
     let (head, rest) = cols.top.split_top(SEP_H);
-    separator(ui, head, "POWER");
+    separator(ui, head, "充放电功率");
     let rate = match b.rate_mw.filter(|r| *r != 0) {
-        Some(r) if r > 0 => Row::dot(palette::GREEN, "Charging at", fmt_watts(r)),
-        Some(r) => Row::dot(palette::ORANGE, "Using", fmt_watts(r)),
-        None => Row::plain("Power", PLACEHOLDER.into()),
+        Some(r) if r > 0 => Row::dot(palette::GREEN, "充电功率", fmt_watts(r)),
+        Some(r) => Row::dot(palette::ORANGE, "放电功耗", fmt_watts(r)),
+        None => Row::plain("实时功率", PLACEHOLDER.into()),
     };
-    let rows = [rate, Row::plain("Cycles", b.cycles.map_or(PLACEHOLDER.into(), |c| c.to_string()))];
+    let rows = [rate, Row::plain("循环次数", b.cycles.map_or(PLACEHOLDER.into(), |c| c.to_string()))];
     for (row, rect) in rows.iter().zip(stack(rest, DETAIL_H)) {
         row.draw(ui, rect);
     }
@@ -723,21 +723,21 @@ fn draw_power(ui: &mut Ui, st: &mut AppState, p: &PowerReading, r: &Reading, h: 
         value: fmt_w(p.total_w),
     };
     let (dash, rest) = cols.dash.split_top(DASH_H);
-    dashboard(ui, dash, &gauge(p.cpu_w, "CPU", CPU_W_C), &ring, &gauge(p.gpu_w, "GPU", GPU_W_C));
+    dashboard(ui, dash, &gauge(p.cpu_w, "CPU", CPU_W_C), &ring, &gauge(p.gpu_w, "显卡", GPU_W_C));
     let in_cpu = r.gpu.as_ref().is_none_or(|g| g.integrated);
     let gpu = match p.gpu_w {
         Some(w) => fmt_w(w),
-        None if in_cpu => "In the CPU".into(),
+        None if in_cpu => "集成于 CPU".into(),
         None => PLACEHOLDER.into(),
     };
-    let rest_w = if p.estimated() { format!("about {}", fmt_w(p.rest_w)) } else { fmt_w(p.rest_w) };
+    let rest_w = if p.estimated() { format!("约 {}", fmt_w(p.rest_w)) } else { fmt_w(p.rest_w) };
     let rows = [
         Row::dot(CPU_W_C, "CPU", p.cpu_w.map_or_else(|| PLACEHOLDER.into(), fmt_w)),
-        Row::dot(GPU_W_C, "Graphics card", gpu),
-        Row::dot(REST_W_C, "Rest of the PC", rest_w),
-        Row::plain(if p.estimated() { "Whole PC, estimated" } else { "Whole PC" }, fmt_w(p.total_w)),
+        Row::dot(GPU_W_C, "独立显卡", gpu),
+        Row::dot(REST_W_C, "其余硬件", rest_w),
+        Row::plain(if p.estimated() { "整机功耗 (估算)" } else { "整机功耗" }, fmt_w(p.total_w)),
     ];
-    details(ui, rest, "WHERE IT GOES", &rows);
+    details(ui, rest, "功耗分布", &rows);
 
     // The minute, and the power supply's outputs (or the shares) under it.
     let rails = p.psu.as_ref().map(|s| s.rails.as_slice()).filter(|r| !r.is_empty());
@@ -854,7 +854,7 @@ fn fmt_volts(v: f32) -> String {
 const FPS_TOPS: [f32; 8] = [30.0, 60.0, 75.0, 120.0, 144.0, 165.0, 240.0, 360.0];
 
 /// The readout's two ways over a game, and the `game_peek` each one sets.
-const GAME_READOUT: [(bool, &str); 2] = [(false, "Stays"), (true, "Peeks")];
+const GAME_READOUT: [(bool, &str); 2] = [(false, "常驻"), (true, "速览")];
 
 fn fps_ceiling(peak: f32) -> f32 {
     FPS_TOPS.into_iter().find(|t| peak <= *t).unwrap_or_else(|| (peak / 120.0).ceil().max(1.0) * 120.0)
@@ -869,10 +869,10 @@ fn draw_games(ui: &mut Ui, st: &mut AppState, cols: &Cols) {
 
     // The switch, and the frames' access with its one button.
     let (head, rest) = cols.dash.split_top(SEP_H);
-    separator(ui, head, "OVER GAMES");
+    separator(ui, head, "游戏悬浮层");
     let (row, rest) = rest.split_top(28.0);
     let on = st.settings.game_stats;
-    if crate::pages::settings::switch_row(ui, wid("system.games.switch"), row, "Show over games", Some(on), accent) {
+    if crate::pages::settings::switch_row(ui, wid("system.games.switch"), row, "游戏中悬浮显示", Some(on), accent) {
         st.settings.game_stats = !on;
         st.cmd(Command::SaveSettings);
     }
@@ -881,7 +881,7 @@ fn draw_games(ui: &mut Ui, st: &mut AppState, cols: &Cols) {
     let (row, rest) = rest.split_top(28.0);
     let names = GAME_READOUT.map(|r| r.1);
     let x = row.right() - crate::pages::settings::picker_width(ui, &names);
-    ui.c.text("Readout", Rect::new(row.x, row.y, (x - 10.0 - row.x).max(0.0), row.h), &TextStyle::body());
+    ui.c.text("显示模式", Rect::new(row.x, row.y, (x - 10.0 - row.x).max(0.0), row.h), &TextStyle::body());
     let sel = GAME_READOUT.iter().position(|r| r.0 == st.settings.game_peek).unwrap_or(0);
     if let Some(i) = crate::pages::settings::picker(ui, "system.games.readout", x, row.center().y - 12.0, 24.0, &names, sel) {
         st.settings.game_peek = GAME_READOUT[i].0;
@@ -889,24 +889,24 @@ fn draw_games(ui: &mut Ui, st: &mut AppState, cols: &Cols) {
     }
     let (about, rest) = rest.split_top(40.0);
     let about_text = if st.settings.game_peek {
-        "A few seconds as a game starts, when FPS drops and on Alt+Shift+F. No added delay in between."
+        "在游戏启动、掉帧时或按下 Alt+Shift+F 时显示数秒，平时无额外渲染延迟。"
     } else {
-        "Stays over the game, which adds about a frame of delay. Alt+Shift+F hides it."
+        "持续悬浮于游戏上方（可能引入约 1 帧的微小延迟），按 Alt+Shift+F 可随时隐藏。"
     };
     ui.c.text(about_text, about.inset(0.0, 3.0), &note);
     let (head, rest) = rest.split_top(SEP_H);
-    separator(ui, head, "FPS");
+    separator(ui, head, "帧率监控 (FPS)");
     if st.game.access == FpsAccess::Unknown {
         st.cmd(Command::CheckFps);
     }
     let (text, action) = match &st.game.access {
-        FpsAccess::Unknown | FpsAccess::Checking => ("Checking with Windows\u{2026}".to_string(), None),
-        FpsAccess::Ready => ("Ready. Counted from Windows' own log of each frame; nothing loads into the game.".to_string(), None),
-        FpsAccess::NeedsOk => ("Needs a one-time OK from Windows, as Xbox Game Bar does.".to_string(), Some(("Allow FPS", Command::AllowFps))),
-        FpsAccess::Asking => ("Answer Windows' prompt to allow it.".to_string(), None),
-        FpsAccess::SignOut => ("Allowed. Sign out of Windows and back in, and FPS shows.".to_string(), None),
+        FpsAccess::Unknown | FpsAccess::Checking => ("正在向 Windows 确认权限…".to_string(), None),
+        FpsAccess::Ready => ("已就绪。从 Windows 官方帧日志实时统计，不会注入游戏进程。".to_string(), None),
+        FpsAccess::NeedsOk => ("需要 Windows 系统授权（如同 Xbox Game Bar）。".to_string(), Some(("允许读取 FPS", Command::AllowFps))),
+        FpsAccess::Asking => ("请在 Windows 弹出的提示窗口中点击允许。".to_string(), None),
+        FpsAccess::SignOut => ("已授权。请注销 Windows 并重新登录，即可显示游戏帧率。".to_string(), None),
         // Why goes to poni.log; the page says it plainly.
-        FpsAccess::Failed(_) => ("Windows didn't allow it this time.".to_string(), Some(("Check again", Command::CheckFps))),
+        FpsAccess::Failed(_) => ("Windows 本次未允许读取帧率。".to_string(), Some(("重新检查", Command::CheckFps))),
     };
     let (text_r, rest) = rest.split_top(44.0);
     ui.c.text(&text, text_r.inset(0.0, 3.0), &note);
@@ -919,7 +919,7 @@ fn draw_games(ui: &mut Ui, st: &mut AppState, cols: &Cols) {
     }
 
     // The frame rate's last minute, and the frame times under it.
-    let (chart, sub) = history_column(ui, cols.mid, "FRAMES PER SECOND", "FRAME TIME");
+    let (chart, sub) = history_column(ui, cols.mid, "实时帧率 (FPS)", "帧生成时间");
     chart_box(ui, chart);
     let h = st.game.history.clone();
     if h.values().any(f32::is_finite) {
@@ -929,18 +929,18 @@ fn draw_games(ui: &mut Ui, st: &mut AppState, cols: &Cols) {
         ui.c.text(&format!("{top:.0}"), Rect::new(chart.x + 7.0, chart.y + 3.0, 40.0, 14.0), &scale);
     } else {
         let waiting = if !on {
-            "Off"
+            "未开启"
         } else if st.game.active {
-            "No frames yet"
+            "等待采集帧率数据…"
         } else {
-            "Start a game in borderless full screen"
+            "请在无边框窗口全屏模式下启动游戏"
         };
         ui.c.text(waiting, chart.inset(8.0, 0.0), &TextStyle::caption().color(palette::TEXT_FAINT).center());
     }
     let rate = st.game.rate.filter(|_| st.game.active);
     let times = [
-        Row::plain("Average", rate.map_or_else(|| PLACEHOLDER.into(), |r| fmt_frame_ms(r.frame_ms))),
-        Row::plain("Slowest in the last second", rate.map_or_else(|| PLACEHOLDER.into(), |r| fmt_frame_ms(r.worst_ms))),
+        Row::plain("平均帧耗时", rate.map_or_else(|| PLACEHOLDER.into(), |r| fmt_frame_ms(r.frame_ms))),
+        Row::plain("近 1 秒最高帧耗时", rate.map_or_else(|| PLACEHOLDER.into(), |r| fmt_frame_ms(r.worst_ms))),
     ];
     for (row, rect) in times.iter().zip(stack(sub, DETAIL_H)) {
         row.draw(ui, rect);
@@ -948,22 +948,22 @@ fn draw_games(ui: &mut Ui, st: &mut AppState, cols: &Cols) {
 
     // What's in front, and the island's numbers for it.
     let (head, rest) = cols.top.split_top(SEP_H);
-    separator(ui, head, "IN FRONT");
+    separator(ui, head, "前台程序");
     let (name_r, rest) = rest.split_top(36.0);
     let (name, ink) = match (st.game.active, &st.game.app) {
         (true, Some(app)) => (app.clone(), palette::TEXT),
-        (true, None) => ("A full-screen app".to_string(), palette::TEXT),
-        (false, _) => ("No game in front".to_string(), palette::TEXT_FAINT),
+        (true, None) => ("全屏应用".to_string(), palette::TEXT),
+        (false, _) => ("前台暂无游戏运行".to_string(), palette::TEXT_FAINT),
     };
     ui.c.text(&name, name_r.inset(0.0, 2.0), &TextStyle::footnote().weight(Weight::Semibold).wrap().top().line_spacing(1.25).color(ink));
     let reading = st.system.latest.as_ref().filter(|_| st.game.active);
     let gpu = reading.and_then(|r| r.gpu.as_ref());
     let rows = [
-        Row::plain("FPS", rate.map_or_else(|| PLACEHOLDER.into(), |r| fmt_fps(r.fps))),
-        Row::plain("GPU", gpu.map_or_else(|| PLACEHOLDER.into(), |g| fmt_pct(g.util))),
-        Row::plain("GPU temperature", gpu.and_then(|g| g.temp_c).map_or_else(|| PLACEHOLDER.into(), |t| format!("{t:.0}\u{b0}C"))),
-        Row::plain("Video memory", gpu.map_or_else(|| PLACEHOLDER.into(), |g| fmt_bytes(g.mem_used))),
-        Row::plain("CPU", reading.and_then(|r| r.cpu.as_ref()).map_or_else(|| PLACEHOLDER.into(), |c| fmt_pct(c.load))),
+        Row::plain("FPS 帧率", rate.map_or_else(|| PLACEHOLDER.into(), |r| fmt_fps(r.fps))),
+        Row::plain("GPU 占用", gpu.map_or_else(|| PLACEHOLDER.into(), |g| fmt_pct(g.util))),
+        Row::plain("GPU 温度", gpu.and_then(|g| g.temp_c).map_or_else(|| PLACEHOLDER.into(), |t| format!("{t:.0}\u{b0}C"))),
+        Row::plain("显存占用", gpu.map_or_else(|| PLACEHOLDER.into(), |g| fmt_bytes(g.mem_used))),
+        Row::plain("CPU 占用", reading.and_then(|r| r.cpu.as_ref()).map_or_else(|| PLACEHOLDER.into(), |c| fmt_pct(c.load))),
     ];
     for (row, rect) in rows.iter().zip(stack(rest, DETAIL_H)) {
         row.draw(ui, rect);
@@ -1153,9 +1153,9 @@ fn history_column(ui: &mut Ui, r: Rect, title: &str, sub_title: &str) -> (Rect, 
 /// The processes using the most, with their icons.
 fn processes(ui: &mut Ui, st: &mut AppState, r: Rect, apps: &[AppUse], value: impl Fn(&AppUse) -> String, empty: &str) {
     let (head, rest) = r.split_top(SEP_H);
-    separator(ui, head, "TOP PROCESSES");
+    separator(ui, head, "高占用进程");
     if apps.is_empty() {
-        let note = if empty.is_empty() { "Reading…" } else { empty };
+        let note = if empty.is_empty() { "正在读取…" } else { empty };
         ui.c.text(note, rest.split_top(PROC_H).0, &TextStyle::footnote().color(palette::TEXT_FAINT));
         return;
     }

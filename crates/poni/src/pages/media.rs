@@ -325,7 +325,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         draw_session(ui, st, area, &mut a, &fr);
     } else {
         let r = Rect::new(area.x, area.y, area.w, H_EMPTY);
-        super::empty_state(ui, r, Icon::Music, "Nothing playing", "Play music in Spotify, a browser or any media app");
+        super::empty_state(ui, r, Icon::Music, "当前未在播放", "在音乐播放器、浏览器或任意媒体应用中播放音乐");
     }
     put_anim(a);
 }
@@ -375,7 +375,7 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, area: Rect, a: &mut Anim, fr: &F
 
     // Title, artist, player.
     let title = match m.title.trim() {
-        "" => "Unknown title",
+        "" => "未知曲目",
         t => t,
     };
     let artist = match m.artist.trim() {
@@ -389,8 +389,8 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, area: Rect, a: &mut Anim, fr: &F
     let app = m.app_name.trim();
     let source = match (app.is_empty(), playing) {
         (false, true) => Some(app.to_string()),
-        (false, false) => Some(format!("{app} \u{b7} Paused")),
-        (true, false) => Some("Paused".to_string()),
+        (false, false) => Some(format!("{app} \u{b7} 已暂停")),
+        (true, false) => Some("已暂停".to_string()),
         (true, true) => None,
     };
     if let Some(label) = source {
@@ -617,17 +617,17 @@ enum View<'a> {
 
 fn lyrics_view<'a>(lyr: &'a LyricsState, track_key: &str) -> View<'a> {
     if lyr.track_key != track_key {
-        return View::Status { msg: "Finding lyrics\u{2026}", busy: true };
+        return View::Status { msg: "正在查找歌词\u{2026}", busy: true };
     }
     match &lyr.status {
-        LyricsStatus::Loading => View::Status { msg: "Finding lyrics\u{2026}", busy: true },
-        LyricsStatus::Instrumental => View::Status { msg: "Instrumental", busy: false },
-        LyricsStatus::NotFound => View::Status { msg: "No synced lyrics for this song", busy: false },
-        LyricsStatus::Error(_) | LyricsStatus::Idle => View::Status { msg: "Lyrics unavailable", busy: false },
+        LyricsStatus::Loading => View::Status { msg: "正在查找歌词\u{2026}", busy: true },
+        LyricsStatus::Instrumental => View::Status { msg: "纯音乐 / 无歌词", busy: false },
+        LyricsStatus::NotFound => View::Status { msg: "该歌曲暂无同步歌词", busy: false },
+        LyricsStatus::Error(_) | LyricsStatus::Idle => View::Status { msg: "歌词暂不可用", busy: false },
         LyricsStatus::Found => match &lyr.lyrics {
             Some(l) if !l.is_empty() && l.synced => View::Synced(l),
             Some(l) if !l.is_empty() => View::Plain(l),
-            _ => View::Status { msg: "No synced lyrics for this song", busy: false },
+            _ => View::Status { msg: "该歌曲暂无同步歌词", busy: false },
         },
     }
 }
@@ -676,16 +676,16 @@ pub(crate) fn draw_lyrics(
         View::Status { msg, busy } => {
             let pulse = if busy && ctx.live { Some(ctx.now) } else { None };
             draw_status(ui, vp, msg, pulse);
-            format!("Lyrics: {source}")
+            format!("歌词来源：{source}")
         }
         View::Synced(l) => {
             out.synced = true;
             out.animating = draw_synced(ui, l, &lyr.ruby, pui, vp, a, fr, fresh, ctx, acts);
-            format!("Lyrics: {source}")
+            format!("歌词来源：{source}")
         }
         View::Plain(l) => {
             out.animating = draw_plain(ui, l, &lyr.ruby, pui, vp, a, fr, fresh, ctx);
-            format!("Lyrics: {source} \u{b7} Unsynced")
+            format!("歌词来源：{source} \u{b7} 未同步")
         }
     };
 

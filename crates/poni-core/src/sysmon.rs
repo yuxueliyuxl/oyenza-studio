@@ -39,12 +39,12 @@ impl Module {
         match self {
             Module::Cpu => "CPU",
             Module::Gpu => "GPU",
-            Module::Memory => "Memory",
-            Module::Drives => "Drives",
-            Module::Network => "Network",
-            Module::Power => "Power",
-            Module::Battery => "Battery",
-            Module::Games => "Games",
+            Module::Memory => "内存",
+            Module::Drives => "磁盘",
+            Module::Network => "网络",
+            Module::Power => "功耗",
+            Module::Battery => "电池",
+            Module::Games => "游戏",
         }
     }
 }

@@ -112,19 +112,19 @@ impl PageKind {
 
     pub fn title(self) -> &'static str {
         match self {
-            PageKind::Media => "Music",
-            PageKind::Focus => "Focus",
-            PageKind::Health => "Health",
-            PageKind::Shelf => "Shelf",
-            PageKind::Tasks => "Tasks",
-            PageKind::Clipboard => "Clipboard",
-            PageKind::Today => "Today",
-            PageKind::System => "System",
-            PageKind::Script => "Script",
+            PageKind::Media => "音乐",
+            PageKind::Focus => "专注",
+            PageKind::Health => "健康",
+            PageKind::Shelf => "文件架",
+            PageKind::Tasks => "待办",
+            PageKind::Clipboard => "剪贴板",
+            PageKind::Today => "今日",
+            PageKind::System => "系统",
+            PageKind::Script => "提词器",
             PageKind::Oyenza => "Oyenza",
-            PageKind::Prayer => "Prayer",
-            PageKind::Addons => "Add-ons",
-            PageKind::Settings => "Settings",
+            PageKind::Prayer => "祈祷",
+            PageKind::Addons => "插件",
+            PageKind::Settings => "设置",
         }
     }
 
@@ -543,10 +543,10 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
     }
     let text = match row.get(slot) {
         Some(p) => p.title(),
-        None if slot == GEAR_SLOT && page == PageKind::Settings => "Close settings",
-        None if slot == GEAR_SLOT => "Settings",
-        None if st.pinned => "Unpin",
-        None => "Keep open",
+        None if slot == GEAR_SLOT && page == PageKind::Settings => "关闭设置",
+        None if slot == GEAR_SLOT => "设置",
+        None if st.pinned => "取消固定",
+        None => "保持展开",
     };
     Some(Tip { anchor, text, alpha })
 }

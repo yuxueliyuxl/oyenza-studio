@@ -64,16 +64,16 @@ const KNOB_INSET: f32 = 2.0;
 const OYENZA: Color = palette::ORANGE;
 
 // Glass: on Windows from a copy of the screen, on a Mac macOS's own glass.
-const THEMES: [(Theme, &str); 4] = [(Theme::Classic, "Classic"), (Theme::Oyen, "Oyen"), (Theme::Glass, "Glass"), (Theme::Pill, "Pill")];
+const THEMES: [(Theme, &str); 4] = [(Theme::Classic, "经典"), (Theme::Oyen, "Oyen 猫"), (Theme::Glass, "毛玻璃"), (Theme::Pill, "胶囊")];
 
 /// An idle look's name in the picker (`eyes` is Oyen in his theme).
 fn idle_name(s: IdleStyle, eyes: &'static str) -> &'static str {
     match s {
-        IdleStyle::Clock => "Clock",
+        IdleStyle::Clock => "时钟",
         IdleStyle::Eyes => eyes,
-        IdleStyle::Minimal => "Minimal",
-        IdleStyle::Hidden => "Hidden",
-        IdleStyle::Status => "Status",
+        IdleStyle::Minimal => "极简",
+        IdleStyle::Hidden => "隐藏",
+        IdleStyle::Status => "状态栏",
     }
 }
 
@@ -97,19 +97,19 @@ enum Row {
 }
 
 const LEFT: &[Row] = &[
-    Row::Switch(Switch::Lyrics, "Synced lyrics"),
-    Row::Switch(Switch::Pronunciation, "Lyrics pronunciation"),
-    Row::Switch(Switch::Sounds, "Sounds"),
-    Row::Switch(Switch::Updates, "Tell me about new versions"),
+    Row::Switch(Switch::Lyrics, "同步歌词"),
+    Row::Switch(Switch::Pronunciation, "歌词注音"),
+    Row::Switch(Switch::Sounds, "操作音效"),
+    Row::Switch(Switch::Updates, "检查新版本提示"),
 ];
-const RIGHT: &[Row] = &[Row::Switch(Switch::Clipboard, "Clipboard history"), Row::Fullscreen, Row::Switch(Switch::Autostart, "Start with Windows")];
+const RIGHT: &[Row] = &[Row::Switch(Switch::Clipboard, "剪贴板历史"), Row::Fullscreen, Row::Switch(Switch::Autostart, "开机自启动")];
 const COLUMNS: [&[Row]; 2] = [LEFT, RIGHT];
 /// Rows in the taller column.
 const ROWS: usize = if LEFT.len() > RIGHT.len() { LEFT.len() } else { RIGHT.len() };
 
 /// The full-screen choices as the tray menu names them, and the
 /// `hide_in_fullscreen` each one sets.
-const FULLSCREEN: [(bool, &str); 2] = [(true, "Hide"), (false, "Stay on top")];
+const FULLSCREEN: [(bool, &str); 2] = [(true, "自动隐藏"), (false, "保持置顶")];
 
 pub fn height(st: &AppState) -> f32 {
     match st.update.offer {
@@ -153,8 +153,8 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let theme_pad = pad_to_fit(ui, &theme_names, col_w);
     let side_by_side = theme_pad >= SEG_PAD_MIN && pad_to_fit(ui, &look_names, col_w) >= SEG_PAD_MIN;
     let (theme_pick, look_pick) = if side_by_side {
-        ui.c.text("THEME", Rect::new(cols[0], area.y + LABELS_Y, col_w, 14.0), &label_st);
-        ui.c.text("IDLE LOOK", Rect::new(cols[1], area.y + LABELS_Y, col_w, 14.0), &label_st);
+        ui.c.text("主题风格", Rect::new(cols[0], area.y + LABELS_Y, col_w, 14.0), &label_st);
+        ui.c.text("待机形态", Rect::new(cols[1], area.y + LABELS_Y, col_w, 14.0), &label_st);
         let y = area.y + PICKERS_Y;
         let look_pad = pad_to_fit(ui, &look_names, col_w);
         (
@@ -164,7 +164,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     } else {
         // A row each, the labels in a column of their own and both pickers
         // starting after it.
-        let labels = ["THEME", "IDLE LOOK"];
+        let labels = ["主题风格", "待机形态"];
         let label_w = labels.iter().map(|l| ui.c.measure(l, &label_st, 300.0).0.ceil()).fold(0.0f32, f32::max);
         let x = area.x + label_w + STACK_GAP;
         let pick = |ui: &mut Ui, i: usize, id: &str, names: &[&str], sel: usize| {
@@ -202,7 +202,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
                 }
                 Row::Fullscreen => {
                     let sel = FULLSCREEN.iter().position(|f| f.0 == st.settings.hide_in_fullscreen).unwrap_or(0);
-                    if let Some(i) = choice_row(ui, row, "In full-screen apps", "settings.fullscreen", &FULLSCREEN.map(|f| f.1), sel) {
+                    if let Some(i) = choice_row(ui, row, "全屏应用场景", "settings.fullscreen", &FULLSCREEN.map(|f| f.1), sel) {
                         st.settings.hide_in_fullscreen = FULLSCREEN[i].0;
                         st.cmd(Command::SaveSettings);
                     }
@@ -219,14 +219,14 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
 /// available 0.2.5", its headline, and Update (the sheet).
 fn draw_offer(ui: &mut Ui, st: &mut AppState, r: Rect, rel: &Release) {
     let cy = r.center().y;
-    let w = ui.pill_width("Update", false, true);
+    let w = ui.pill_width("立即更新", false, true);
     let b = Rect::new(r.right() - w, cy - PILL_SMALL / 2.0, w, PILL_SMALL);
-    if ui.pill(wid("settings.update"), b, "Update", None, PillStyle::Primary(st.accent)).clicked {
+    if ui.pill(wid("settings.update"), b, "立即更新", None, PillStyle::Primary(st.accent)).clicked {
         st.update.sheet = true;
     }
     let right = b.x - 12.0;
     let body = TextStyle::body();
-    let title = "Update available";
+    let title = "发现新版本";
     let tw = text_with_dim_width(ui, title, &rel.version, &body).ceil().min((right - r.x).max(0.0));
     text_with_dim(ui, title, &rel.version, Rect::new(r.x, r.y, tw + 1.0, r.h), body);
     let x = r.x + tw + 12.0;
@@ -269,43 +269,43 @@ fn draw_sheet(ui: &mut Ui, st: &mut AppState, area: Rect, rel: &Release) {
     let c = Point::new(head.x + ICON / 2.0, cy);
     ui.c.fill_circle(c, ICON / 2.0, accent.with_alpha(0.22));
     ui.c.icon(Icon::Download, Rect::from_center(c, 20.0, 20.0), accent);
-    let later_w = ui.pill_width("Not now", false, true);
+    let later_w = ui.pill_width("暂不更新", false, true);
     let later = Rect::new(head.right() - later_w, cy - PILL_SMALL / 2.0, later_w, PILL_SMALL);
-    if ui.pill(wid("update.later"), later, "Not now", None, PillStyle::Utility).clicked {
+    if ui.pill(wid("update.later"), later, "暂不更新", None, PillStyle::Utility).clicked {
         st.cmd(Command::Collapse);
     }
     let x = head.x + TEXT_X;
     let w = (later.x - 16.0 - x).max(0.0);
     let ready = st.update.ready;
-    let title = if ready { "Update ready to install" } else { "Update available" };
+    let title = if ready { "更新已准备就绪" } else { "发现新版本" };
     text_with_dim(ui, title, &rel.version, Rect::new(x, cy - 19.0, w, 20.0), TextStyle::headline());
     let size = rel.download(cfg!(target_os = "macos")).map(|d| fmt_bytes(d.size)).unwrap_or_default();
     let line = if ready {
-        "A new version of Oyenza Studio is ready to be installed.".to_string()
+        "新版本 Oyenza Studio 已下载完毕，准备安装。".to_string()
     } else {
-        format!("A new version of Oyenza Studio is ready to download ({size}).")
+        format!("Oyenza Studio 新版本可供下载 ({size})。")
     };
     ui.c.text(&line, Rect::new(x, cy + 1.0, w, 17.0), &TextStyle::footnote().color(palette::TEXT_DIM));
 
     let px = 1.0 / ui.c.scale().max(0.5);
     ui.c.fill_rect(Rect::new(area.x, area.y + RULE_Y, area.w, px), Color::white(0.10));
     let label_st = TextStyle::caption().weight(Weight::Semibold).color(palette::TEXT_FAINT);
-    ui.c.text("WHAT'S NEW", Rect::new(area.x, area.y + SHEET_CAPTION_Y, area.w, 14.0), &label_st);
+    ui.c.text("更新内容", Rect::new(area.x, area.y + SHEET_CAPTION_Y, area.w, 14.0), &label_st);
     ui.c.text(&rel.headline, Rect::new(area.x, area.y + SHEET_HEADLINE_Y, area.w, 20.0), &TextStyle::body());
 
     // Windows with the Setup in: now or next start. Otherwise the DMG on a
     // Mac, and the release page on Windows (the Setup couldn't download).
     let cards: Vec<(Get, Icon, String, &str)> = if ready {
         let next = if st.update.next_start {
-            (Get::NextStart, Icon::Check, "Installs on next start".to_string(), "Set: before it next opens")
+            (Get::NextStart, Icon::Check, "下次启动时安装".to_string(), "已设置：在下次启动前安装")
         } else {
-            (Get::NextStart, Icon::Reset, "Install on next start".to_string(), "Before it next opens")
+            (Get::NextStart, Icon::Reset, "下次启动时安装".to_string(), "在下次启动前完成安装")
         };
-        vec![(Get::InstallNow, Icon::Download, "Install now".to_string(), "Closes, updates and opens again"), next]
+        vec![(Get::InstallNow, Icon::Download, "立即安装".to_string(), "关闭当前程序，更新并自动重新启动"), next]
     } else if cfg!(target_os = "macos") {
-        vec![(Get::Download, Icon::Download, format!("Download {}", rel.version), "Downloads the DMG: open it and drag Oyenza Studio to Applications.")]
+        vec![(Get::Download, Icon::Download, format!("下载 {}", rel.version), "下载 DMG 镜像：打开并将 Oyenza Studio 拖入应用程序目录。")]
     } else {
-        vec![(Get::Download, Icon::Download, format!("Download {}", rel.version), "Opens its release page: run the Setup there, your settings stay.")]
+        vec![(Get::Download, Icon::Download, format!("下载 {}", rel.version), "前往发布页下载安装包，您的个性化设置将完整保留。")]
     };
     let n = cards.len() as f32;
     let card_w = ((area.w - (n - 1.0) * CARD_GAP) / n).max(0.0);
@@ -319,7 +319,7 @@ fn draw_sheet(ui: &mut Ui, st: &mut AppState, area: Rect, rel: &Release) {
         }
     }
 
-    let notes = format!("See what's new in Oyenza Studio {}", rel.version);
+    let notes = format!("查看 Oyenza Studio {} 的完整更新日志", rel.version);
     let nw = ui.pill_width(&notes, true, true).min(area.w);
     let nr = Rect::new(area.x, area.y + NOTES_Y, nw, PILL_SMALL);
     if ui.pill(wid("update.notes"), nr, &notes, Some(Icon::Open), PillStyle::Utility).clicked {
@@ -398,36 +398,36 @@ fn draw_account(ui: &mut Ui, st: &mut AppState, r: Rect) {
     crate::oyen::app_icon(ui.c, Point::new(r.x + ICON / 2.0, cy), ICON);
     match st.oyenza.link.clone() {
         OyenzaLink::Off => {
-            let label = "Sign in with Oyenza";
+            let label = "登录 Oyenza";
             let w = ui.pill_width(label, false, false);
             let b = Rect::new(r.right() - w, cy - PILL_REGULAR / 2.0, w, PILL_REGULAR);
             if ui.pill(wid("settings.sign-in"), b, label, None, PillStyle::Primary(OYENZA)).clicked {
                 st.cmd(Command::Oyenza(OyenzaCmd::SignIn));
             }
-            account_text(ui, r, b.x, "Oyenza", "Sign in to see money in and bills due here.");
+            account_text(ui, r, b.x, "Oyenza 账户", "登录以在此处查看账户变动与账单提醒。");
         }
         OyenzaLink::Connecting { code, until, .. } => {
-            let cancel_w = ui.pill_width("Cancel", false, true);
+            let cancel_w = ui.pill_width("取消", false, true);
             let cancel = Rect::new(r.right() - cancel_w, cy - PILL_SMALL / 2.0, cancel_w, PILL_SMALL);
-            if ui.pill(wid("settings.cancel"), cancel, "Cancel", None, PillStyle::Utility).clicked {
+            if ui.pill(wid("settings.cancel"), cancel, "取消", None, PillStyle::Utility).clicked {
                 st.cmd(Command::Oyenza(OyenzaCmd::Cancel));
             }
-            let show_w = ui.pill_width("Show code", false, true);
+            let show_w = ui.pill_width("显示验证码", false, true);
             let show = Rect::new(cancel.x - PILL_GAP - show_w, cancel.y, show_w, PILL_SMALL);
-            if ui.pill(wid("settings.show-code"), show, "Show code", None, PillStyle::Primary(OYENZA)).clicked {
+            if ui.pill(wid("settings.show-code"), show, "显示验证码", None, PillStyle::Primary(OYENZA)).clicked {
                 st.cmd(Command::SetPage(PageKind::Oyenza));
             }
-            let line = format!("Code {code} · works for {}", oyenza::code_time_left(until - st.now));
-            account_text(ui, r, show.x, "Signing in to Oyenza", &line);
+            let line = format!("验证码 {code} · 有效时间剩余 {}", oyenza::code_time_left(until - st.now));
+            account_text(ui, r, show.x, "正在登录 Oyenza", &line);
         }
         OyenzaLink::Connected { account } => {
-            let dis_w = ui.pill_width("Disconnect", false, true);
+            let dis_w = ui.pill_width("断开连接", false, true);
             let dis = Rect::new(r.right() - dis_w, cy - PILL_SMALL / 2.0, dis_w, PILL_SMALL);
-            if ui.pill(wid("settings.disconnect"), dis, "Disconnect", None, PillStyle::Utility).clicked {
+            if ui.pill(wid("settings.disconnect"), dis, "断开连接", None, PillStyle::Utility).clicked {
                 st.cmd(Command::Oyenza(OyenzaCmd::Disconnect));
             }
             // Sums and senders straight away on the island (off: they wait for Show).
-            let label = "Show amounts";
+            let label = "显示金额";
             let lw = ui.c.measure(label, &TextStyle::body(), 300.0).0.ceil();
             let row = Rect::new(dis.x - 2.0 * ROW_BLEED - lw - 10.0 - SWITCH_W, cy - ROW_H / 2.0, lw + 10.0 + SWITCH_W, ROW_H);
             let on = st.settings.oyenza_show_amounts;
@@ -435,7 +435,7 @@ fn draw_account(ui: &mut Ui, st: &mut AppState, r: Rect) {
                 st.settings.oyenza_show_amounts = !on;
                 st.cmd(Command::SaveSettings);
             }
-            account_text(ui, r, row.x - ROW_BLEED, "Oyenza", &format!("Signed in as {account}"));
+            account_text(ui, r, row.x - ROW_BLEED, "Oyenza 账户", &format!("已登录：{account}"));
         }
     }
 }

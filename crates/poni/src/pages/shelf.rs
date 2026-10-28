@@ -47,7 +47,7 @@ const APPEAR_SECS: f64 = 0.28;
 const GLOW_SECS: f32 = 0.14;
 /// Drop-zone outline: one solid hairline, the same idle and while dragging.
 const ZONE_STROKE: f32 = 1.5;
-const DROP_LABEL: &str = "Drop to add to Shelf";
+const DROP_LABEL: &str = "拖放文件到此处加入文件架";
 /// The phone panel under the shelf while Phone drop is open.
 const PHONE_GAP: f32 = 12.0;
 const PHONE_H: f32 = 152.0;
@@ -61,9 +61,9 @@ const PHONE_TILE_W: f32 = 196.0;
 /// elsewhere the phone panel has Done alone.
 const PAIRING: bool = cfg!(windows);
 /// What the phone panel calls this computer.
-const THIS_COMPUTER: &str = if cfg!(windows) { "this PC" } else { "this Mac" };
+const THIS_COMPUTER: &str = if cfg!(windows) { "这台电脑" } else { "这台 Mac" };
 /// What to allow if the system asks about Phone drop's incoming connections.
-const ALLOW_HINT: &str = if cfg!(windows) { "If Windows asks, allow Oyenza Studio on private networks." } else { "If macOS asks, allow incoming connections for Oyenza Studio." };
+const ALLOW_HINT: &str = if cfg!(windows) { "若弹出 Windows 防火墙提示，请允许 Oyenza Studio 在专用网络上通信。" } else { "若 macOS 弹出安全提示，请允许 Oyenza Studio 接收传入连接。" };
 /// How long a phone result ("3 files from iPhone…") stays in the panel.
 pub const PHONE_OUTCOME_S: f64 = 8.0;
 
@@ -394,7 +394,7 @@ fn draw_items(
         ui.c.set_alpha(tile_a);
         let cap_r = Rect::new(name_r.x, name_r.bottom(), name_r.w, 14.0);
         if missing {
-            ui.c.text("Missing", cap_r, &TextStyle::caption().weight(Weight::Medium).color(palette::TEXT_DIM).center());
+            ui.c.text("已丢失", cap_r, &TextStyle::caption().weight(Weight::Medium).color(palette::TEXT_DIM).center());
         } else {
             ui.c.text(&caption(&it.path, kind), cap_r, &TextStyle::caption().color(palette::TEXT_FAINT).center());
         }
@@ -464,31 +464,31 @@ fn draw_items(
 
 fn draw_header(ui: &mut Ui, st: &AppState, l: &Local, head: Rect, items: &[ShelfItem], hovered: Option<usize>, actions: &mut Vec<Action>) {
     let n = items.len();
-    let count = format!("{n} {}", if n == 1 { "item" } else { "items" });
+    let count = format!("{n} 项");
     let cs = TextStyle::body().weight(Weight::Semibold).color(palette::TEXT_DIM);
     let cw = ui.c.measure(&count, &cs, 200.0).0;
     ui.c.text(&count, Rect::new(head.x, head.y, cw + 4.0, head.h), &cs);
 
     // Small utility pills on the right: Clear, plus Undo for a while after a removal.
-    let clear_w = ui.pill_width("Clear", true, true);
+    let clear_w = ui.pill_width("清空", true, true);
     let clear_r = Rect::new(head.right() - clear_w, head.y, clear_w, PILL_SMALL);
-    if ui.pill(wid("shelf.clear"), clear_r, "Clear", Some(Icon::Trash), PillStyle::Utility).clicked {
+    if ui.pill(wid("shelf.clear"), clear_r, "清空", Some(Icon::Trash), PillStyle::Utility).clicked {
         actions.push(Action::Clear);
     }
     let mut right = clear_r.x;
     if l.undo.as_ref().is_some_and(|(_, t)| st.now - t < UNDO_SECS) {
-        let undo_w = ui.pill_width("Undo", true, true);
+        let undo_w = ui.pill_width("撤销", true, true);
         let undo_r = Rect::new(clear_r.x - PILL_GAP - undo_w, head.y, undo_w, PILL_SMALL);
-        if ui.pill(wid("shelf.undo"), undo_r, "Undo", Some(Icon::Undo), PillStyle::UtilityAccent(st.accent)).clicked {
+        if ui.pill(wid("shelf.undo"), undo_r, "撤销", Some(Icon::Undo), PillStyle::UtilityAccent(st.accent)).clicked {
             actions.push(Action::Undo);
         }
         right = undo_r.x;
     }
     // Phone drop: send from or save to a phone (the panel opens below).
     if st.phone.is_none() {
-        let phone_w = ui.pill_width("Phone", true, true);
+        let phone_w = ui.pill_width("手机互联", true, true);
         let phone_r = Rect::new(right - PILL_GAP - phone_w, head.y, phone_w, PILL_SMALL);
-        if ui.pill(wid("shelf.phone"), phone_r, "Phone", Some(Icon::Phone), PillStyle::Utility).clicked {
+        if ui.pill(wid("shelf.phone"), phone_r, "手机互联", Some(Icon::Phone), PillStyle::Utility).clicked {
             actions.push(Action::PhoneOpen);
         }
         right = phone_r.x;
@@ -498,10 +498,10 @@ fn draw_header(ui: &mut Ui, st: &AppState, l: &Local, head: Rect, items: &[Shelf
     // (where it lives) or a full shelf.
     let hint = match hovered.and_then(|i| items.get(i)) {
         Some(it) if imaging::path_kind(&it.path) == Some(PathKind::Missing) => {
-            Some((format!("Moved or deleted · was in {}", parent_dir(&it.path)), palette::TEXT_DIM))
+            Some((format!("已移动或已删除 · 原位于 {}", parent_dir(&it.path)), palette::TEXT_DIM))
         }
         Some(it) => Some((parent_dir(&it.path), palette::TEXT_DIM)),
-        None if n >= MAX_SHELF_ITEMS => Some(("Full · new files replace the oldest".to_string(), palette::TEXT_FAINT)),
+        None if n >= MAX_SHELF_ITEMS => Some(("文件架已满 · 新文件将替换最早的一项".to_string(), palette::TEXT_FAINT)),
         None => None,
     };
     if let Some((hint, color)) = hint {
@@ -514,13 +514,13 @@ fn draw_header(ui: &mut Ui, st: &AppState, l: &Local, head: Rect, items: &[Shelf
 /// "PDF", "Folder", "File" — the small line under a tile's name.
 fn caption(path: &str, kind: Option<PathKind>) -> String {
     if kind == Some(PathKind::Folder) {
-        return "Folder".into();
+        return "文件夹".into();
     }
     let ext = extension(path);
     if !ext.is_empty() {
         ext.to_uppercase()
     } else if kind == Some(PathKind::File) {
-        "File".into()
+        "文件".into()
     } else {
         String::new()
     }
@@ -580,11 +580,11 @@ fn draw_empty(ui: &mut Ui, st: &AppState, l: &Local, area: Rect, card: Option<(R
 
     let undo_live = g < 0.5 && l.undo.as_ref().is_some_and(|(_, t)| st.now - t < UNDO_SECS);
     let (icon, title, hint) = if g >= 0.5 {
-        (Icon::Plus, DROP_LABEL, "Oyenza Studio keeps a link — the files stay where they are")
+        (Icon::Plus, DROP_LABEL, "Oyenza Studio 仅保留文件快捷链接 — 原始文件位置不会改变")
     } else if undo_live {
-        (Icon::Tray, "Shelf cleared", "")
+        (Icon::Tray, "文件架已清空", "")
     } else {
-        (Icon::Tray, "Drop files here", "Drag files or folders onto the island to keep them close")
+        (Icon::Tray, "拖放文件到此处", "将文件或文件夹拖动到灵动岛上，以便随时快速访问")
     };
     // Icon, title and hint (or the Undo pill) stacked around the zone centre.
     let c = zone.center();
@@ -592,9 +592,9 @@ fn draw_empty(ui: &mut Ui, st: &AppState, l: &Local, area: Rect, card: Option<(R
     ui.c.icon(icon, Rect::from_center(Point::new(c.x, c.y - 22.0), 26.0, 26.0), icon_col);
     ui.c.text(title, Rect::new(zone.x, c.y - 4.0, zone.w, 20.0), &TextStyle::headline().center());
     if undo_live {
-        let w = ui.pill_width("Undo", true, true);
+        let w = ui.pill_width("撤销", true, true);
         let r = Rect::new(c.x - w / 2.0, c.y + 18.0, w, PILL_SMALL);
-        if ui.pill(wid("shelf.undo"), r, "Undo", Some(Icon::Undo), PillStyle::UtilityAccent(accent)).clicked {
+        if ui.pill(wid("shelf.undo"), r, "撤销", Some(Icon::Undo), PillStyle::UtilityAccent(accent)).clicked {
             actions.push(Action::Undo);
         }
     } else {
@@ -677,8 +677,8 @@ fn draw_phone_tile(ui: &mut Ui, tile: Rect, alpha: f32, card: Option<(Rect, f32)
     let c = tile.center();
     ui.c.fill_circle(Point::new(c.x, c.y - 24.0), 18.0, Color::white(0.10));
     ui.c.icon(Icon::Phone, Rect::from_center(Point::new(c.x, c.y - 24.0), 20.0, 20.0), palette::TEXT);
-    ui.c.text("Phone drop", Rect::new(tile.x, c.y + 2.0, tile.w, 20.0), &TextStyle::headline().center());
-    ui.c.text("Send from or save to a phone", Rect::new(tile.x + 10.0, c.y + 22.0, tile.w - 20.0, 18.0), &TextStyle::footnote().color(palette::TEXT_DIM).center());
+    ui.c.text("手机互联", Rect::new(tile.x, c.y + 2.0, tile.w, 20.0), &TextStyle::headline().center());
+    ui.c.text("在手机与电脑间收发文件", Rect::new(tile.x + 10.0, c.y + 22.0, tile.w - 20.0, 18.0), &TextStyle::footnote().color(palette::TEXT_DIM).center());
     ui.c.set_alpha(base);
     resp.clicked
 }
@@ -688,13 +688,13 @@ fn names_line(files: &[(String, u64)]) -> String {
     match files {
         [] => String::new(),
         [a] => a.0.clone(),
-        [a, b] => format!("{} and {}", a.0, b.0),
-        [a, b, rest @ ..] => format!("{}, {} and {} more", a.0, b.0, rest.len()),
+        [a, b] => format!("{} 与 {}", a.0, b.0),
+        [a, b, rest @ ..] => format!("{}、{} 等共 {} 个文件", a.0, b.0, rest.len() + 2),
     }
 }
 
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
+fn plural(n: usize, _one: &str, _many: &str) -> String {
+    format!("{n} 个文件")
 }
 
 /// The host part of the link ("192.168.1.20"), for the panel's small print.
@@ -719,7 +719,7 @@ fn draw_phone(ui: &mut Ui, st: &AppState, l: &mut Local, pd: &PhoneDrop, r: Rect
             let c = qr_r.center();
             ui.c.icon(Icon::Phone, Rect::from_center(Point::new(c.x, c.y - 14.0), 26.0, 26.0), palette::TEXT_DIM);
             let n = st.paired.len();
-            ui.c.text(&format!("{n} paired"), Rect::new(qr_r.x, c.y + 10.0, qr_r.w, 20.0), &TextStyle::headline().center());
+            ui.c.text(&format!("{n} 台已配对"), Rect::new(qr_r.x, c.y + 10.0, qr_r.w, 20.0), &TextStyle::headline().center());
         }
         _ => match &pd.qr {
             Some(qr) => draw_qr(ui, l, qr, &pd.url, qr_r),
@@ -761,9 +761,9 @@ fn draw_phone(ui: &mut Ui, st: &AppState, l: &mut Local, pd: &PhoneDrop, r: Rect
     };
 
     if let Some(err) = &pd.error {
-        ui.c.text("Phone drop couldn't start", title_r, &TextStyle::headline());
+        ui.c.text("手机互联服务启动失败", title_r, &TextStyle::headline());
         ui.c.text(err, line(0.0), &dim);
-        match pills(ui, &[("Close", None, PillStyle::Utility, "shelf.phone.close"), ("Try again", None, PillStyle::Primary(st.accent), "shelf.phone.retry")]) {
+        match pills(ui, &[("关闭", None, PillStyle::Utility, "shelf.phone.close"), ("重试", None, PillStyle::Primary(st.accent), "shelf.phone.retry")]) {
             Some(0) => actions.push(Action::PhoneClose),
             Some(1) => actions.push(Action::PhoneOpen),
             _ => {}
@@ -773,10 +773,10 @@ fn draw_phone(ui: &mut Ui, st: &AppState, l: &mut Local, pd: &PhoneDrop, r: Rect
 
     if let Some(ask) = &pd.ask {
         let n = ask.files.len();
-        ui.c.text(&format!("{} wants to send {}", ask.from, plural(n, "file", "files")), title_r, &TextStyle::headline());
+        ui.c.text(&format!("{} 请求发送 {}", ask.from, plural(n, "文件", "文件")), title_r, &TextStyle::headline());
         ui.c.text(&names_line(&ask.files), line(0.0), &dim);
         ui.c.text(&fmt_bytes(ask.total), line(1.0), &dim);
-        match pills(ui, &[("Accept", Some(Icon::Check), PillStyle::Primary(palette::GREEN), "shelf.phone.accept"), ("Decline", None, PillStyle::Utility, "shelf.phone.decline")]) {
+        match pills(ui, &[("接收", Some(Icon::Check), PillStyle::Primary(palette::GREEN), "shelf.phone.accept"), ("拒绝", None, PillStyle::Utility, "shelf.phone.decline")]) {
             Some(0) => actions.push(Action::PhoneAnswer(ask.id, true)),
             Some(1) => actions.push(Action::PhoneAnswer(ask.id, false)),
             _ => {}
@@ -785,16 +785,16 @@ fn draw_phone(ui: &mut Ui, st: &AppState, l: &mut Local, pd: &PhoneDrop, r: Rect
     }
 
     if let Some(t) = &pd.transfer {
-        ui.c.text(&format!("Receiving from {}", t.from), title_r, &TextStyle::headline());
+        ui.c.text(&format!("正在接收来自 {} 的文件", t.from), title_r, &TextStyle::headline());
         let detail = if t.files > 1 {
-            format!("File {} of {} · {} of {}", (t.file + 1).min(t.files), t.files, fmt_bytes(t.done), fmt_bytes(t.total))
+            format!("文件 {} / {} · {} / {}", (t.file + 1).min(t.files), t.files, fmt_bytes(t.done), fmt_bytes(t.total))
         } else {
-            format!("{} of {}", fmt_bytes(t.done), fmt_bytes(t.total))
+            format!("{} / {}", fmt_bytes(t.done), fmt_bytes(t.total))
         };
         ui.c.text(&detail, line(0.0), &dim);
         let frac = if t.total > 0 { (t.done as f64 / t.total as f64) as f32 } else { 1.0 };
         ui.progress_bar(wid("shelf.phone.progress"), Rect::new(x, line(1.0).y + 8.0, w, 4.0), frac, palette::GREEN, false);
-        if pills(ui, &[("Stop", None, PillStyle::Utility, "shelf.phone.stop")]) == Some(0) {
+        if pills(ui, &[("中断", None, PillStyle::Utility, "shelf.phone.stop")]) == Some(0) {
             actions.push(Action::PhoneClose);
         }
         return;
@@ -806,18 +806,18 @@ fn draw_phone(ui: &mut Ui, st: &AppState, l: &mut Local, pd: &PhoneDrop, r: Rect
                 actions.push(Action::Pair(PairCmd::Back));
                 return;
             }
-            ui.c.text("Scan to pair a phone", title_r, &TextStyle::headline());
-            ui.c.text(&format!("Then it can send to {THIS_COMPUTER} from any network."), line(0.0), &dim);
+            ui.c.text("扫码配对手机", title_r, &TextStyle::headline());
+            ui.c.text(&format!("配对后，手机可在任意网络下向{THIS_COMPUTER}发送文件。"), line(0.0), &dim);
             let second = if st.pair_server == Some(false) {
-                format!("Can't reach {} right now. Check the internet.", pairing_host())
+                format!("暂无法连接至 {}，请检查网络。", pairing_host())
             } else {
                 let mins = ((until - now) / 60.0).ceil().max(1.0) as u32;
-                format!("Use the camera. The code works for {} more {}.", mins, if mins == 1 { "minute" } else { "minutes" })
+                format!("使用手机相机扫码。验证码有效时间剩余 {} 分钟。", mins)
             };
             ui.c.text(&second, line(1.0), &dim);
-            let cw = caption_w(ui, &[("Done", false), ("Back", false)]);
-            ui.c.text(&format!("Pairing link · {}", pairing_host()), Rect::new(x, pills_y + 7.0, cw, 16.0), &small);
-            match pills(ui, &[("Done", None, PillStyle::Utility, "shelf.pair.done"), ("Back", None, PillStyle::Utility, "shelf.pair.back")]) {
+            let cw = caption_w(ui, &[("完成", false), ("返回", false)]);
+            ui.c.text(&format!("配对链接 · {}", pairing_host()), Rect::new(x, pills_y + 7.0, cw, 16.0), &small);
+            match pills(ui, &[("完成", None, PillStyle::Utility, "shelf.pair.done"), ("返回", None, PillStyle::Utility, "shelf.pair.back")]) {
                 Some(0) => actions.push(Action::PhoneClose),
                 Some(1) => actions.push(Action::Pair(PairCmd::Back)),
                 _ => {}
@@ -825,8 +825,8 @@ fn draw_phone(ui: &mut Ui, st: &AppState, l: &mut Local, pd: &PhoneDrop, r: Rect
             return;
         }
         PhoneView::Paired => {
-            let list = [("Done", None, PillStyle::Utility, "shelf.pair.done"), ("Back", None, PillStyle::Utility, "shelf.pair.back"), ("Pair a phone", Some(Icon::Phone), PillStyle::Utility, "shelf.pair.another")];
-            let cw = caption_w(ui, &[("Done", false), ("Back", false), ("Pair a phone", true)]);
+            let list = [("完成", None, PillStyle::Utility, "shelf.pair.done"), ("返回", None, PillStyle::Utility, "shelf.pair.back"), ("配对手机", Some(Icon::Phone), PillStyle::Utility, "shelf.pair.another")];
+            let cw = caption_w(ui, &[("完成", false), ("返回", false), ("配对手机", true)]);
             draw_paired_list(ui, st, x, w, r, pills_y, cw, actions);
             match pills(ui, &list) {
                 Some(0) => actions.push(Action::PhoneClose),
@@ -851,34 +851,34 @@ fn draw_phone(ui: &mut Ui, st: &AppState, l: &mut Local, pd: &PhoneDrop, r: Rect
             ui.c.text(text, Rect::new(x + ix, title_r.y, w - ix, title_r.h), &TextStyle::headline().color(color));
             let next = match (&pd.outcome_line, &pd.visitor) {
                 (Some(line), _) => line.clone(),
-                (None, Some(v)) => format!("{v} can send more from the same page."),
-                (None, None) => "Scan the code with your phone's camera.".to_string(),
+                (None, Some(v)) => format!("{v} 可在当前页面继续发送文件。"),
+                (None, None) => "请使用手机相机扫描二维码。".to_string(),
             };
             ui.c.text(&next, line(0.0), &dim);
         }
         None => match &pd.visitor {
             Some(v) => {
-                ui.c.text(&format!("{v} is connected"), title_r, &TextStyle::headline());
-                ui.c.text("Pick photos or files on the phone and tap Send.", line(0.0), &dim);
-                ui.c.text("Files on the Shelf can be saved from the phone.", line(1.0), &dim);
+                ui.c.text(&format!("{v} 已连接"), title_r, &TextStyle::headline());
+                ui.c.text("在手机上选择照片或文件，点击发送即可。", line(0.0), &dim);
+                ui.c.text("手机也可直接下载保存文件架中的文件。", line(1.0), &dim);
             }
             None => {
-                ui.c.text("Scan with your phone's camera", title_r, &TextStyle::headline());
-                ui.c.text(&format!("Your phone needs the same Wi-Fi as {THIS_COMPUTER}."), line(0.0), &dim);
+                ui.c.text("使用手机相机扫描上方二维码", title_r, &TextStyle::headline());
+                ui.c.text(&format!("手机需与{THIS_COMPUTER}连接至同一 Wi-Fi 网络。"), line(0.0), &dim);
                 ui.c.text(ALLOW_HINT, line(1.0), &dim);
             }
         },
     }
     // One pill per meaning: pair the first phone, or see the paired ones
     // (that list has its own Pair a phone).
-    let (pair_label, pair_icon, pair_cmd) = if st.paired.is_empty() { ("Pair a phone", Some(Icon::Phone), PairCmd::Begin) } else { ("Paired phones", None, PairCmd::List) };
+    let (pair_label, pair_icon, pair_cmd) = if st.paired.is_empty() { ("配对手机", Some(Icon::Phone), PairCmd::Begin) } else { ("已配对设备", None, PairCmd::List) };
     let n = if PAIRING { 2 } else { 1 };
     let host = link_host(&pd.url);
     if !host.is_empty() {
-        let cw = caption_w(ui, &[("Done", false), (pair_label, pair_icon.is_some())][..n]);
-        ui.c.text(&format!("This session's link · {host}"), Rect::new(x, pills_y + 7.0, cw, 16.0), &small);
+        let cw = caption_w(ui, &[("完成", false), (pair_label, pair_icon.is_some())][..n]);
+        ui.c.text(&format!("本次传输链接 · {host}"), Rect::new(x, pills_y + 7.0, cw, 16.0), &small);
     }
-    match pills(ui, &[("Done", None, PillStyle::Utility, "shelf.phone.done"), (pair_label, pair_icon, PillStyle::Utility, "shelf.pair.open")][..n]) {
+    match pills(ui, &[("完成", None, PillStyle::Utility, "shelf.phone.done"), (pair_label, pair_icon, PillStyle::Utility, "shelf.pair.open")][..n]) {
         Some(0) => actions.push(Action::PhoneClose),
         Some(1) => actions.push(Action::Pair(pair_cmd)),
         _ => {}
@@ -900,16 +900,16 @@ const ROW_H: f32 = 30.0;
 fn draw_paired_list(ui: &mut Ui, st: &AppState, x: f32, w: f32, r: Rect, pills_y: f32, caption_w: f32, actions: &mut Vec<Action>) {
     let dim = TextStyle::footnote().color(palette::TEXT_DIM);
     if st.paired.is_empty() {
-        ui.c.text("No phone is paired", Rect::new(x, r.y + 18.0, w, 20.0), &TextStyle::headline());
-        ui.c.text(&format!("Pair a phone, and it can send to {THIS_COMPUTER} from any network."), Rect::new(x, r.y + 44.0, w, 18.0), &dim);
+        ui.c.text("暂无已配对的手机", Rect::new(x, r.y + 18.0, w, 20.0), &TextStyle::headline());
+        ui.c.text(&format!("配对手机后，即可在任意网络下向{THIS_COMPUTER}发送文件。"), Rect::new(x, r.y + 44.0, w, 18.0), &dim);
         return;
     }
     let unix = st.unix;
     for (i, p) in st.paired.iter().take(LIST_ROWS).enumerate() {
         let y = r.y + 12.0 + i as f32 * ROW_H;
-        let remove_w = ui.pill_width("Remove", false, true).max(72.0);
+        let remove_w = ui.pill_width("解除配对", false, true).max(72.0);
         let remove_r = Rect::new(x + w - remove_w, y + (ROW_H - PILL_SMALL) / 2.0 - 2.0, remove_w, PILL_SMALL);
-        if ui.pill(wid(&format!("shelf.pair.remove.{}", short(&p.room))), remove_r, "Remove", None, PillStyle::Utility).clicked {
+        if ui.pill(wid(&format!("shelf.pair.remove.{}", short(&p.room))), remove_r, "解除配对", None, PillStyle::Utility).clicked {
             actions.push(Action::Pair(PairCmd::Remove(p.room.clone())));
         }
         let seen = last_seen(unix, p);
@@ -921,7 +921,7 @@ fn draw_paired_list(ui: &mut Ui, st: &AppState, x: f32, w: f32, r: Rect, pills_y
     let more = st.paired.len().saturating_sub(LIST_ROWS);
     if more > 0 {
         let small = TextStyle::caption().color(palette::TEXT_FAINT);
-        ui.c.text(&format!("+{more} used less recently"), Rect::new(x, pills_y + 7.0, caption_w, 16.0), &small);
+        ui.c.text(&format!("+{more} 个近期较少使用的设备"), Rect::new(x, pills_y + 7.0, caption_w, 16.0), &small);
     }
 }
 

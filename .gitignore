@@ -8,3 +8,4 @@
 /after
 /ci-artifacts
 /_site
+*.exe

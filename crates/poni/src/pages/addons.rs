@@ -51,7 +51,7 @@ fn icon(a: &Addon) -> Icon {
 }
 
 pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
-    let intro = "Each one stays off until you switch it on, and switching off deletes any download.";
+    let intro = "每个功能默认保持关闭，开启时自动下载，关闭时将清理对应下载文件。";
     ui.c.text(intro, Rect::new(area.x, area.y, area.w, INTRO_H), &TextStyle::footnote().color(palette::TEXT_DIM));
     // The last row's hover wash meets the Pill card's rounded corners.
     let card = super::clipboard::pill_card(st, area);
@@ -83,7 +83,7 @@ fn addon_row(ui: &mut Ui, st: &AppState, r: Rect, i: usize, a: &Addon, card: Opt
     // The size, while there is a choice to make.
     let mut text_right = sw.x - 16.0;
     if status == Status::Off {
-        let size = if a.downloads() { fmt_bytes(a.size()) } else { "Built in".to_string() };
+        let size = if a.downloads() { fmt_bytes(a.size()) } else { "内置".to_string() };
         let style = TextStyle::footnote().color(palette::TEXT_DIM).right();
         let w = ui.c.measure(&size, &style, 200.0).0.ceil();
         ui.c.text(&size, Rect::new(sw.x - 10.0 - w, r.y, w, r.h), &style);

@@ -189,9 +189,9 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let digits = TextStyle::new(size).weight(Weight::Semibold).tabular().center().color(if paused { palette::TEXT_DIM } else { palette::TEXT });
     ui.c.text(&countdown, Rect::new(rc.x - 50.0, digits_cy - 20.0, 100.0, 40.0), &digits);
     let (label, label_color) = if paused {
-        ("Paused".to_string(), ring_color)
+        ("已暂停".to_string(), ring_color)
     } else if running {
-        (format!("until {}", end_clock(st, remaining)), palette::TEXT_DIM)
+        (format!("结束时间 {}", end_clock(st, remaining)), palette::TEXT_DIM)
     } else {
         (phase.label().to_string(), palette::TEXT_DIM)
     };
@@ -209,7 +209,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         // Switching is only possible while idle, so a running session shows
         // what it is instead of a row of dead chips.
         let minutes = (st.pomodoro.phase_duration(phase) / 60.0).round() as u32;
-        let status = format!("{} · {minutes} min", phase.label());
+        let status = format!("{} · {minutes} 分钟", phase.label());
         let style = TextStyle::body().weight(Weight::Semibold).color(palette::TEXT_DIM);
         ui.c.text(&status, Rect::new(x0, chips_y, col_w, CHIP_H), &style);
     } else {
@@ -217,16 +217,16 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     }
 
     let (toggle_label, toggle_icon) = if running {
-        ("Pause", Icon::Pause)
+        ("暂停", Icon::Pause)
     } else if paused {
-        ("Resume", Icon::Play)
+        ("继续", Icon::Play)
     } else {
-        ("Start", Icon::Play)
+        ("开始", Icon::Play)
     };
     // The primary keeps one width for all three labels; squeeze everything on narrow islands.
-    let mut toggle_w = ["Start", "Pause", "Resume"].iter().map(|l| ui.pill_width(l, true, false)).fold(TOGGLE_MIN_W, f32::max);
-    let mut reset_w = ui.pill_width("Reset", true, false);
-    let mut skip_w = ui.pill_width("Skip", true, false);
+    let mut toggle_w = ["开始", "暂停", "继续"].iter().map(|l| ui.pill_width(l, true, false)).fold(TOGGLE_MIN_W, f32::max);
+    let mut reset_w = ui.pill_width("重置", true, false);
+    let mut skip_w = ui.pill_width("跳过", true, false);
     let need = toggle_w + reset_w + skip_w + 2.0 * PILL_GAP;
     if need > col_w && need > 0.0 {
         let k = ((col_w - 2.0 * PILL_GAP) / (need - 2.0 * PILL_GAP)).clamp(0.6, 1.0);
@@ -240,14 +240,14 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     }
     let reset_r = Rect::new(toggle_r.right() + PILL_GAP, buttons_y, reset_w, BUTTON_H);
     if active {
-        if ui.pill(wid("focus.reset"), reset_r, "Reset", Some(Icon::Reset), PillStyle::Neutral).clicked {
+        if ui.pill(wid("focus.reset"), reset_r, "重置", Some(Icon::Reset), PillStyle::Neutral).clicked {
             st.pomodoro.reset();
         }
     } else {
-        disabled_pill(ui, reset_r, "Reset", Icon::Reset);
+        disabled_pill(ui, reset_r, "重置", Icon::Reset);
     }
     let skip_r = Rect::new(reset_r.right() + PILL_GAP, buttons_y, skip_w, BUTTON_H);
-    if ui.pill(wid("focus.skip"), skip_r, "Skip", Some(Icon::Next), PillStyle::Neutral).clicked {
+    if ui.pill(wid("focus.skip"), skip_r, "跳过", Some(Icon::Next), PillStyle::Neutral).clicked {
         // A skipped phase is not a completed session, so no stats or notice.
         let _ = st.pomodoro.skip(now);
     }
@@ -283,9 +283,9 @@ fn end_clock(st: &AppState, remaining: f64) -> String {
 fn draw_segments(ui: &mut Ui, st: &mut AppState, x0: f32, y: f32) {
     let cfg = &st.settings.pomodoro;
     let segs = [
-        (Phase::Focus, "Focus", cfg.focus_min),
-        (Phase::ShortBreak, "Short", cfg.short_break_min),
-        (Phase::LongBreak, "Long", cfg.long_break_min),
+        (Phase::Focus, "专注", cfg.focus_min),
+        (Phase::ShortBreak, "短休", cfg.short_break_min),
+        (Phase::LongBreak, "长休", cfg.long_break_min),
     ];
     let name_st = TextStyle::body().weight(Weight::Semibold);
     let num_st = TextStyle::footnote().tabular();
@@ -366,9 +366,9 @@ fn draw_stats(ui: &mut Ui, st: &AppState, r: Rect) {
     }
     let n = st.store.focus_sessions.get(&st.day_key()).copied().unwrap_or(0);
     let text = match n {
-        0 => "No focus sessions yet today".to_string(),
-        1 => "1 focus session today".to_string(),
-        n => format!("{n} focus sessions today"),
+        0 => "今日尚未开始专注".to_string(),
+        1 => "今日已完成 1 次专注".to_string(),
+        n => format!("今日已完成 {n} 次专注"),
     };
     ui.c.text(&text, Rect::new(x, r.y, (r.right() - x).max(0.0), r.h), &TextStyle::footnote().color(palette::TEXT_DIM));
 }
@@ -385,11 +385,7 @@ fn disabled_pill(ui: &mut Ui, r: Rect, label: &str, icon: Icon) {
 }
 
 fn sessions_text(n: u32) -> String {
-    if n == 1 {
-        "1 session".to_string()
-    } else {
-        format!("{n} sessions")
-    }
+    format!("{n} 次专注")
 }
 
 /// Called by the app when a Pomodoro phase finishes on its own.
@@ -408,17 +404,17 @@ pub fn on_phase_ended(st: &mut AppState, e: PhaseEnded) {
         Phase::Focus => (
             Icon::Timer,
             palette::ORANGE,
-            "Break's over".to_string(),
-            if e.auto_started { format!("{minutes} min focus started") } else { "Click to start the next focus".to_string() },
+            "休息时间结束".to_string(),
+            if e.auto_started { format!("已开始 {minutes} 分钟专注") } else { "点击开始下一次专注".to_string() },
         ),
         Phase::ShortBreak | Phase::LongBreak => {
             let title = if e.next == Phase::LongBreak {
-                format!("Cycle done — {minutes} min long break")
+                format!("周期完成 — {minutes} 分钟长休息")
             } else {
-                format!("Focus done — {minutes} min break")
+                format!("专注完成 — {minutes} 分钟短休息")
             };
-            let action = if e.auto_started { "break started" } else { "click to start your break" };
-            (Icon::Coffee, palette::GREEN, title, format!("{} today · {action}", sessions_text(today)))
+            let action = if e.auto_started { "已自动开始休息" } else { "点击开始休息" };
+            (Icon::Coffee, palette::GREEN, title, format!("今日累计完成 {} · {action}", sessions_text(today)))
         }
     };
     // When the next phase didn't start by itself, clicking the notice (or its

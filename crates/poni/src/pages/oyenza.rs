@@ -56,7 +56,7 @@ const DISC_R: f32 = 11.0;
 /// Rows bleed this far into the page padding for the glow.
 const ROW_BLEED: f32 = 8.0;
 const ACCENT: Color = palette::ORANGE;
-const PLACEHOLDER: &str = "Note a spend, like kopi 25rb · Enter to save";
+const PLACEHOLDER: &str = "记录支出，如 咖啡 25 · 按回车保存";
 /// "Live" while the last answer is this fresh (two missed checks).
 const LIVE_S: i64 = 2 * oyenza::ACTIVITY_EVERY_S as i64 + 5;
 
@@ -114,12 +114,12 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
 // ---------------------------------------------------------------- signing in
 
 fn draw_code(ui: &mut Ui, st: &mut AppState, area: Rect, code: &str, url: &str, until: f64) {
-    ui.c.text("Sign in to Oyenza", Rect::new(area.x, area.y, area.w, 20.0), &TextStyle::headline());
+    ui.c.text("登录 Oyenza", Rect::new(area.x, area.y, area.w, 20.0), &TextStyle::headline());
     ui.c.text(
         if cfg!(windows) {
-            "On your phone or this PC, open oyenza.app/connect and enter this code."
+            "在手机或此电脑上打开 oyenza.app/connect 并输入此配对码。"
         } else {
-            "On your phone or this Mac, open oyenza.app/connect and enter this code."
+            "在手机或此 Mac 上打开 oyenza.app/connect 并输入此配对码。"
         },
         Rect::new(area.x, area.y + 22.0, area.w, 18.0),
         &TextStyle::footnote().color(palette::TEXT_DIM),
@@ -129,17 +129,17 @@ fn draw_code(ui: &mut Ui, st: &mut AppState, area: Rect, code: &str, url: &str, 
     ui.c.text(code, code_r, &TextStyle::display().tabular().center());
 
     let y = area.y + 128.0;
-    let open_w = ui.pill_width("Open oyenza.app", true, true);
+    let open_w = ui.pill_width("打开 oyenza.app", true, true);
     let open = Rect::new(area.x, y, open_w, PILL_SMALL);
-    if ui.pill(wid("oyenza.open-connect"), open, "Open oyenza.app", Some(Icon::Open), PillStyle::Primary(ACCENT)).clicked {
+    if ui.pill(wid("oyenza.open-connect"), open, "打开 oyenza.app", Some(Icon::Open), PillStyle::Primary(ACCENT)).clicked {
         st.cmd(Command::OpenUrl(url.to_string()));
     }
-    let cancel_w = ui.pill_width("Cancel", false, true);
+    let cancel_w = ui.pill_width("取消", false, true);
     let cancel = Rect::new(open.right() + PILL_GAP, y, cancel_w, PILL_SMALL);
-    if ui.pill(wid("oyenza.cancel"), cancel, "Cancel", None, PillStyle::Utility).clicked {
+    if ui.pill(wid("oyenza.cancel"), cancel, "取消", None, PillStyle::Utility).clicked {
         st.cmd(Command::Oyenza(OyenzaCmd::Cancel));
     }
-    let left = format!("Code works for {}", oyenza::code_time_left(until - st.now));
+    let left = format!("配对码有效期剩余 {}", oyenza::code_time_left(until - st.now));
     let x = cancel.right() + 12.0;
     ui.c.text(&left, Rect::new(x, y, (area.right() - x).max(0.0), PILL_SMALL), &TextStyle::footnote().color(palette::TEXT_DIM).right());
 }
@@ -162,7 +162,7 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
         draw_saved(ui, st, row, &saved);
     } else if st.oyenza.saving {
         mark(ui, row, Icon::Plus, palette::TEXT_FAINT, false);
-        let text = format!("Saving “{}”…", st.oyenza.input.trim());
+        let text = format!("正在保存 “{}”…", st.oyenza.input.trim());
         ui.c.text(&text, Rect::new(row.x + TEXT_X, row.y, row.w - TEXT_X, row.h), &TextStyle::body().color(palette::TEXT_DIM));
     } else {
         let resp = ui.text_input_row(wid("oyenza.note"), row, &mut st.oyenza.input, PLACEHOLDER, oyenza::NOTE_MAX_CHARS, ACCENT, Some(Icon::Plus));
@@ -209,7 +209,7 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let pill_x = if st.settings.oyenza_show_amounts {
         head.right()
     } else {
-        let text = if st.oyenza.reveal { "Hide amounts" } else { "Show amounts" };
+        let text = if st.oyenza.reveal { "隐藏金额" } else { "显示金额" };
         let w = ui.pill_width(text, true, true);
         let r = Rect::new(head.right() - w, head.y, w, PILL_SMALL);
         if ui.pill(wid("oyenza.reveal"), r, text, Some(Icon::Eye), PillStyle::Utility).clicked {
@@ -232,7 +232,7 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let list = Rect::new(area.x, area.y + LIST_Y, area.w, LIST_BOTTOM - LIST_Y);
     if rows.is_empty() {
         let text = match (&activity, pick) {
-            (None, DayPick::Today | DayPick::Past(_)) => "Checking Oyenza…",
+            (None, DayPick::Today | DayPick::Past(_)) => "正在检查 Oyenza…",
             _ => oyenza::empty_day_text(pick),
         };
         empty_row(ui, Rect::new(list.x, list.y, list.w, ROW_H), text);
@@ -248,11 +248,11 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
             let local = oyenza::local_clock(&iso_of(t), offset).unwrap_or(st.local);
             let clock = fmt_clock(&local, st.settings.use_24h);
             let live = st.unix - t <= LIVE_S;
-            (live, if live { format!("Live · updated {clock}") } else { format!("Updated {clock}") })
+            (live, if live { format!("实时 · 更新于 {clock}") } else { format!("更新于 {clock}") })
         }
-        None => (false, "Checking Oyenza…".into()),
+        None => (false, "正在检查 Oyenza…".into()),
     };
-    let open_w = ui.pill_width("Open oyenza.app", true, true);
+    let open_w = ui.pill_width("打开 oyenza.app", true, true);
     let open = Rect::new(footer.right() - open_w, footer.y, open_w, PILL_SMALL);
     let mut text_x = footer.x;
     if live {
@@ -260,7 +260,7 @@ fn draw_connected(ui: &mut Ui, st: &mut AppState, area: Rect) {
         text_x += 14.0;
     }
     ui.c.text(&updated, Rect::new(text_x, footer.y, (open.x - text_x - 12.0).max(0.0), footer.h), &TextStyle::footnote().color(palette::TEXT_FAINT));
-    if ui.pill(wid("oyenza.open"), open, "Open oyenza.app", Some(Icon::Open), PillStyle::Utility).clicked {
+    if ui.pill(wid("oyenza.open"), open, "打开 oyenza.app", Some(Icon::Open), PillStyle::Utility).clicked {
         st.cmd(Command::OpenUrl(oyenza::WEB.to_string()));
     }
 }
@@ -367,7 +367,7 @@ fn draw_list(ui: &mut Ui, st: &mut AppState, list: Rect, rows: &[Line], today: &
                 let time = oyenza::local_clock(&t.at, offset).map(|l| fmt_clock(&l, st.settings.use_24h)).unwrap_or_default();
                 txn_row(ui, r, t, &time, show);
             }
-            Line::More(n) => empty_row(ui, r, &format!("and {n} more in oyenza.app")),
+            Line::More(n) => empty_row(ui, r, &format!("还有 {n} 项可在 oyenza.app 中查看")),
         }
     }
     ui.c.set_text_snap(snap_was);
@@ -402,20 +402,20 @@ fn undo_held(ui: &Ui) -> bool {
 
 fn draw_saved(ui: &mut Ui, st: &mut AppState, row: Rect, saved: &[oyenza::Saved]) {
     mark(ui, row, Icon::Check, palette::GREEN, true);
-    let w = ui.pill_width("Undo", true, true);
+    let w = ui.pill_width("撤销", true, true);
     let undo = Rect::new(row.right() - w, row.center().y - PILL_SMALL / 2.0, w, PILL_SMALL);
     let x = row.x + TEXT_X;
     let head_st = TextStyle::body().weight(Weight::Semibold);
-    let (hw, _) = ui.c.measure("Saved", &head_st, 200.0);
-    ui.c.text("Saved", Rect::new(x, row.y, hw + 2.0, row.h), &head_st);
+    let (hw, _) = ui.c.measure("已保存", &head_st, 200.0);
+    ui.c.text("已保存", Rect::new(x, row.y, hw + 2.0, row.h), &head_st);
     let line_x = x + hw + 8.0;
     ui.c.text(&oyenza::saved_line(saved), Rect::new(line_x, row.y, (undo.x - 12.0 - line_x).max(0.0), row.h), &TextStyle::body().color(palette::TEXT_DIM));
-    if ui.pill(wid("oyenza.undo"), undo, "Undo", Some(Icon::Undo), PillStyle::UtilityAccent(ACCENT)).clicked {
+    if ui.pill(wid("oyenza.undo"), undo, "撤销", Some(Icon::Undo), PillStyle::UtilityAccent(ACCENT)).clicked {
         for s in saved {
             st.cmd(Command::Oyenza(OyenzaCmd::Undo(s.id.clone())));
         }
         st.oyenza.saved = None;
-        st.oyenza.flash = Some(("Taking it back…".into(), st.now + 4.0));
+        st.oyenza.flash = Some(("正在撤销…".into(), st.now + 4.0));
     }
 }
 
@@ -500,14 +500,14 @@ fn txn_row(ui: &mut Ui, r: Rect, t: &Txn, time: &str, show: bool) {
 }
 
 fn bill_row(ui: &mut Ui, r: Rect, b: &Bill, today: &str, pick: DayPick, show: bool) {
-    let kind = if b.is_card() { "Card bill due" } else { "Subscription" };
+    let kind = if b.is_card() { "信用卡账单到期" } else { "订阅服务" };
     let detail = match pick {
-        DayPick::Today => format!("{kind} · today"),
+        DayPick::Today => format!("{kind} · 今天"),
         DayPick::Later => format!("{kind} · {}", oyenza::due_label(&b.due, today)),
         _ => kind.to_string(),
     };
     let (icon, sum, dim) = match (&b.text, b.is_card()) {
-        (_, true) => (Icon::Card, "card bill".to_string(), true),
+        (_, true) => (Icon::Card, "信用卡账单".to_string(), true),
         (Some(t), false) => (Icon::Calendar, if show { t.clone() } else { oyenza::masked(t) }, false),
         (None, false) => (Icon::Calendar, String::new(), true),
     };

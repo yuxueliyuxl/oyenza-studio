@@ -13,9 +13,9 @@ pub enum Phase {
 impl Phase {
     pub fn label(self) -> &'static str {
         match self {
-            Phase::Focus => "Focus",
-            Phase::ShortBreak => "Short break",
-            Phase::LongBreak => "Long break",
+            Phase::Focus => "专注",
+            Phase::ShortBreak => "短休息",
+            Phase::LongBreak => "长休息",
         }
     }
     pub fn is_break(self) -> bool {
