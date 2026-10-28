@@ -166,7 +166,7 @@ impl Updater {
             if in_settings {
                 st.update.said = Some(Said::Failed);
             } else {
-                st.notify(Icon::Unlink, palette::ORANGE, "Couldn't check for updates", "Check the connection and try again.", ANSWER_S, None);
+                st.notify(Icon::Unlink, palette::ORANGE, "无法检查更新", "请检查网络连接后重试。", ANSWER_S, None);
             }
             return false;
         }
@@ -175,7 +175,7 @@ impl Updater {
             if in_settings {
                 st.update.said = Some(Said::UpToDate);
             } else {
-                st.notify(Icon::CheckCircle, palette::GREEN, "Oyenza Studio is up to date", format!("{VERSION} is the latest version."), ANSWER_S, None);
+                st.notify(Icon::CheckCircle, palette::GREEN, "已是最新版本", format!("{VERSION} 即为最新版本。"), ANSWER_S, None);
             }
             return false;
         };
@@ -192,9 +192,9 @@ impl Updater {
             let notice = Notice {
                 icon: Icon::Download,
                 color: st.accent,
-                title: "Downloading".into(),
+                title: "正在下载更新".into(),
                 title_dim: rel.version.clone(),
-                subtitle: "Ready to install in a moment".into(),
+                subtitle: "稍后即可安装".into(),
                 until: st.now + ASK_OPEN_S as f64,
                 action: None,
                 inline: None,
@@ -435,13 +435,13 @@ pub fn pending_install() -> bool {
     }
 }
 
-/// "Update available 0.2.5" (the version dimmer) over the release's
+/// "发现新版本 0.2.5" (the version dimmer) over the release's
 /// headline, and Hide. Clicked, it opens the Update sheet.
 pub fn new_version_notice(rel: &Release, accent: Color, until: f64) -> Notice {
     Notice {
         icon: Icon::Download,
         color: accent,
-        title: "Update available".into(),
+        title: "发现新版本".into(),
         title_dim: rel.version.clone(),
         subtitle: rel.headline.clone(),
         until,
@@ -456,14 +456,14 @@ fn is_new_version_notice(n: &Notice) -> bool {
     n.action == Some(NoticeAction::OpenUpdate)
 }
 
-/// "Updated to 0.2.5" once, with What's new.
+/// "已更新至 0.2.5" once, with What's new.
 pub fn updated_notice(headline: Option<String>, until: f64) -> Notice {
     Notice {
         icon: Icon::CheckCircle,
         color: palette::GREEN,
-        title: format!("Updated to {VERSION}"),
+        title: format!("已更新至 {VERSION}"),
         title_dim: String::new(),
-        subtitle: headline.unwrap_or_else(|| "See what's new in this version".into()),
+        subtitle: headline.unwrap_or_else(|| "查看当前版本新特性".into()),
         until,
         action: None,
         inline: Some(InlineAction::WhatsNew),
@@ -561,13 +561,13 @@ mod tests {
         let repo = "https://github.com/lucacadalora/oyenza-studio/releases";
         let this = Release { version: VERSION.into(), date: String::new(), headline: "This".into(), notes: format!("{repo}/tag/v{VERSION}"), windows: None, mac: None };
         assert!(!u.checked(&mut st, Ok(this), now));
-        assert_eq!(st.notice.as_ref().map(|n| n.title.as_str()), Some("Oyenza Studio is up to date"));
+        assert_eq!(st.notice.as_ref().map(|n| n.title.as_str()), Some("已是最新版本"));
         assert!(st.notice.as_ref().is_some_and(|n| n.subtitle.contains(VERSION)));
         st.notice = None;
         assert!(u.ask(now));
         u.begin();
         assert!(!u.checked(&mut st, Err("offline".into()), now));
-        assert_eq!(st.notice.as_ref().map(|n| n.title.as_str()), Some("Couldn't check for updates"));
+        assert_eq!(st.notice.as_ref().map(|n| n.title.as_str()), Some("无法检查更新"));
         // The hourly looks say nothing.
         st.notice = None;
         u.begin();
@@ -587,7 +587,7 @@ mod tests {
         assert!(u.ask(now));
         u.begin();
         assert!(!u.checked(&mut st, Ok(rel.clone()), now), "the Setup comes first");
-        assert_eq!(st.notice.as_ref().map(|n| (n.title.as_str(), n.title_dim.as_str())), Some(("Downloading", rel.version.as_str())));
+        assert_eq!(st.notice.as_ref().map(|n| (n.title.as_str(), n.title_dim.as_str())), Some(("正在下载更新", rel.version.as_str())));
         let (_, setup) = u.want_setup(&mut st).expect("the Setup to download");
         std::fs::write(&setup, b"setup bytes").unwrap();
         assert!(u.fetched(&mut st, Ok(setup)), "now the sheet opens");
