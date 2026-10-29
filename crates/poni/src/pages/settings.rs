@@ -247,8 +247,8 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
 /// where the names don't fit.
 fn draw_tabs(ui: &mut Ui, st: &mut AppState, r: Rect) {
     let body = TextStyle::body();
-    let label_w = ui.c.measure("Tabs", &body, 200.0).0.ceil();
-    ui.c.text("Tabs", Rect::new(r.x, r.y, label_w + 1.0, r.h), &body);
+    let label_w = ui.c.measure("标签页", &body, 200.0).0.ceil();
+    ui.c.text("标签页", Rect::new(r.x, r.y, label_w + 1.0, r.h), &body);
     let chip_st = TextStyle::footnote().weight(Weight::Semibold);
     let pages = PageKind::HIDEABLE;
     let gaps = CHIP_GAP * (pages.len() - 1) as f32;

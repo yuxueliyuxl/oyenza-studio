@@ -669,7 +669,7 @@ mod tests {
             ..Default::default()
         };
         let md = markdown(&n, &at(14, 5), true);
-        assert!(md.starts_with("# Launch plan\n\nThu 29 Oct 2026 · 14:05 · 31 min\n"), "{md}");
+        assert!(md.starts_with("# Launch plan\n\n周四 29 10月 2026 · 14:05 · 31 min\n"), "{md}");
         assert!(md.contains("\n## Summary\n\n- Rilis Jumat\n"));
         assert!(!md.contains("## Decisions"), "nothing decided: no heading");
         assert!(md.contains("- [ ] Kirim deck (Budi, Kamis)\n- [ ] Cek harga\n"));

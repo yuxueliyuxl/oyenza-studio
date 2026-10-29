@@ -48,13 +48,13 @@ const REC: Color = palette::RED;
 /// The Mac's microphone and voice come from branch ielts-coach-mac; until
 /// they're wired in there, the Mac page says the coach is on its way.
 const SOON: bool = cfg!(target_os = "macos");
-const DISCLAIMER: &str = "IELTS\u{ae} is a trademark of the IELTS partners. Not official IELTS material, not endorsed by them.";
+const DISCLAIMER: &str = "IELTS\u{ae} 是雅思官方合作伙伴的注册商标。本项目非官方雅思材料，未获官方背书。";
 /// Where the microphone switch is: Windows Settings › Privacy & security ›
 /// Microphone, or System Settings › Privacy & Security › Microphone.
 const MIC_SETTINGS: &str =
     if cfg!(target_os = "macos") { "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone" } else { "ms-settings:privacy-microphone" };
-const SIGN_IN_TITLE: &str = "Latihan IELTS Speaking bareng Oyen";
-const SIGN_IN_BODY: &str = "Oyen jadi examiner IELTS kamu: nanya Part 1 sampai 3, dengerin jawabanmu, kasih band score, terus nge-roast. Masuk ke Oyenza dulu buat mulai.";
+const SIGN_IN_TITLE: &str = "与 Oyen 一起进行雅思口语实战训练";
+const SIGN_IN_BODY: &str = "Oyen 担任您的专属雅思考官：模拟 Part 1 到 Part 3 提问，倾听您的作答，给出权威 Band 评分与犀利点评反馈。请先登录 Oyenza 账号开始。";
 
 pub fn height(st: &AppState) -> f32 {
     if SOON || !signed_in(st) {
@@ -130,10 +130,10 @@ fn draw_home(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
     let at = Point::new(left.center().x, left.y + 56.0);
     let what = if st.ielts.talking() { Oyen::Talk { since: st.ielts.said_at } } else { Oyen::Rest { look: look(ui, at, page) } };
     head(ui, at, HEAD_W, what);
-    ui.c.text("Latihan IELTS", Rect::new(left.x, left.y + 110.0, left.w, 20.0), &TextStyle::headline().center());
-    ui.c.text("Oyen jadi examiner kamu", Rect::new(left.x, left.y + 131.0, left.w, 16.0), &TextStyle::footnote().color(palette::TEXT_DIM).center());
+    ui.c.text("雅思口语实战", Rect::new(left.x, left.y + 110.0, left.w, 20.0), &TextStyle::headline().center());
+    ui.c.text("Oyen 担任您的考官", Rect::new(left.x, left.y + 131.0, left.w, 16.0), &TextStyle::footnote().color(palette::TEXT_DIM).center());
     if let Some(me) = &st.ielts.me {
-        let today = format!("Hari ini {} dari {} sesi", me.today.used.min(me.today.cap), me.today.cap);
+        let today = format!("今日已完成 {} / {} 场", me.today.used.min(me.today.cap), me.today.cap);
         ui.c.text(&today, Rect::new(left.x, left.y + 151.0, left.w, 15.0), &TextStyle::caption().color(palette::TEXT_FAINT).center());
     }
 
@@ -149,14 +149,14 @@ fn draw_home(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
         (None, Some(p)) => {
             let r = Rect::new(right.x, right.y + 20.0, right.w, 120.0);
             problem_text(ui, r, p);
-            let w = ui.pill_width("Coba lagi", false, true);
-            if ui.pill(wid("ielts.home-retry"), Rect::new(right.x, right.y + 110.0, w, PILL_SMALL), "Coba lagi", None, PillStyle::Neutral).clicked {
+            let w = ui.pill_width("重试", false, true);
+            if ui.pill(wid("ielts.home-retry"), Rect::new(right.x, right.y + 110.0, w, PILL_SMALL), "重试", None, PillStyle::Neutral).clicked {
                 st.cmd(Command::Ielts(IeltsCmd::Retry));
             }
         }
         (None, None) => {
             let r = Rect::new(right.x, right.y, right.w, 5.0 * ROW_H);
-            ui.c.text("Ngambil level kamu\u{2026}", r, &TextStyle::footnote().color(palette::TEXT_DIM));
+            ui.c.text("正在获取关卡信息\u{2026}", r, &TextStyle::footnote().color(palette::TEXT_DIM));
         }
     }
 
@@ -168,7 +168,7 @@ fn draw_home(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
         st.settings.ielts_spice = Spice::ALL[i];
         st.cmd(Command::SaveSettings);
     }
-    let label = "Mulai";
+    let label = "开始";
     let w = ui.pill_width(label, true, true);
     let go = Rect::new(right.right() - w, y, w, PILL_SMALL);
     if st.ielts.startable(st.ielts.pick) {
@@ -224,16 +224,16 @@ fn ladder_row(ui: &mut Ui, st: &AppState, r: Rect, level: &ielts::Level) -> bool
     let x = r.x + 36.0;
     let nw = ui.c.measure(&level.name, &name_st, 200.0).0.ceil();
     ui.c.text(&level.name, Rect::new(x, r.y, nw + 2.0, r.h), &name_st);
-    let target = format!("target {}", ielts::fmt_band(level.target));
+    let target = format!("目标分 {}", ielts::fmt_band(level.target));
     ui.c.text(&target, Rect::new(x + nw + 8.0, r.y, 90.0, r.h), &TextStyle::caption().color(palette::TEXT_FAINT));
     let right = r.right() - 10.0;
     let side = TextStyle::caption().color(palette::TEXT_DIM).right();
     if level.unlocked {
-        let best = level.best.map_or("belum ada skor".to_string(), |b| format!("terbaik {}", ielts::fmt_band(b)));
+        let best = level.best.map_or("暂无成绩".to_string(), |b| format!("最高分 {}", ielts::fmt_band(b)));
         ui.c.text(&best, Rect::new(right - 120.0, r.y, 120.0, r.h), &side);
     } else {
-        let w = ui.c.measure("kekunci", &side, 120.0).0.ceil();
-        ui.c.text("kekunci", Rect::new(right - w - 1.0, r.y, w + 1.0, r.h), &side.color(palette::TEXT_FAINT));
+        let w = ui.c.measure("未解锁", &side, 120.0).0.ceil();
+        ui.c.text("未解锁", Rect::new(right - w - 1.0, r.y, w + 1.0, r.h), &side.color(palette::TEXT_FAINT));
         ui.c.icon(Icon::Lock, Rect::new(right - w - 17.0, cy - 6.5, 13.0, 13.0), palette::TEXT_FAINT);
     }
     resp.clicked
@@ -271,11 +271,11 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
         }
         Phase::Prep { until } => {
             ui.c.text(&ielts::fmt_secs(until - now), Rect::new(under.x, under.y - 2.0, under.w, 22.0), &TextStyle::value().tabular().color(ACCENT).center());
-            ui.c.text("waktu persiapan", Rect::new(under.x, under.y + 20.0, under.w, 14.0), &TextStyle::caption().color(palette::TEXT_FAINT).center());
+            ui.c.text("准备时间", Rect::new(under.x, under.y + 20.0, under.w, 14.0), &TextStyle::caption().color(palette::TEXT_FAINT).center());
             ui.request_live();
         }
-        Phase::Ready => ui.c.text("Ketuk buat jawab", under, &TextStyle::caption().color(palette::TEXT_DIM).center()),
-        Phase::Talking if answer_now(st) => ui.c.text("Ketuk buat langsung jawab", under, &TextStyle::caption().color(palette::TEXT_FAINT).center()),
+        Phase::Ready => ui.c.text("点击麦克风作答", under, &TextStyle::caption().color(palette::TEXT_DIM).center()),
+        Phase::Talking if answer_now(st) => ui.c.text("点击立即开始作答", under, &TextStyle::caption().color(palette::TEXT_FAINT).center()),
         _ => {}
     }
 
@@ -284,7 +284,7 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
     let part = c.turn.as_ref().map_or("Intro", ielts::part_label);
     ui.c.text(&part.to_uppercase(), Rect::new(right.x, right.y, 120.0, 16.0), &TextStyle::caption().weight(Weight::Bold).color(ACCENT));
     if let Some(l) = c.me.as_ref().and_then(|m| m.rung(c.level)) {
-        let lv = format!("Level {} \u{b7} {}", l.n, l.name);
+        let lv = format!("第 {} 关 \u{b7} {}", l.n, l.name);
         ui.c.text(&lv, Rect::new(right.x + 120.0, right.y, right.w - 120.0, 16.0), &TextStyle::caption().color(palette::TEXT_FAINT).right());
     }
     let buttons_y = right.bottom() - PILL_SMALL;
@@ -299,17 +299,17 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
     // What he heard, what's happening, and the way out.
     let c = &st.ielts;
     if !c.heard.is_empty() && matches!(phase, Phase::Talking | Phase::Thinking) && body_free(c) {
-        let heard = format!("Oyen dengar: \u{201c}{}\u{201d}", c.heard);
+        let heard = format!("Oyen 听到: \u{201c}{}\u{201d}", c.heard);
         ui.c.text(&heard, Rect::new(right.x, buttons_y - 44.0, right.w, 16.0), &TextStyle::caption().color(palette::TEXT_FAINT));
     }
     // While the answer is heard (7 to 9 s), the dots keep going.
-    let thinking = ["Oyen mikir.", "Oyen mikir..", "Oyen mikir..."];
+    let thinking = ["Oyen 思考中.", "Oyen 思考中..", "Oyen 思考中..."];
     let status = match phase {
-        Phase::Starting => "Oyen siap-siap\u{2026}",
-        Phase::Talking => "Oyen lagi ngomong\u{2026}",
-        Phase::Prep { .. } => "Siapin jawabanmu. Rekaman mulai sendiri pas waktunya habis.",
-        Phase::Ready => c.hint.map_or("Giliran kamu. Ketuk mic buat jawab.", |h| h.line()),
-        Phase::Recording { .. } => "Ngerekam\u{2026} ketuk lagi kalau udah.",
+        Phase::Starting => "Oyen 准备就绪\u{2026}",
+        Phase::Talking => "Oyen 正在发问\u{2026}",
+        Phase::Prep { .. } => "请准备作答。时间用尽后将自动开启录音。",
+        Phase::Ready => c.hint.map_or("轮到您了。点击麦克风开始作答。", |h| h.line()),
+        Phase::Recording { .. } => "正在录音\u{2026} 作答完毕点击停止。",
         Phase::Thinking => {
             ui.request_live();
             thinking[(now * 2.5) as usize % thinking.len()]
@@ -319,11 +319,11 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
     let status_st = TextStyle::footnote().color(if c.hint.is_some() && phase == Phase::Ready { palette::ORANGE } else { palette::TEXT_DIM });
     ui.c.text(status, Rect::new(right.x, buttons_y - 26.0, right.w, 18.0), &status_st);
     let skippable = c.id.is_some() && matches!(phase, Phase::Talking | Phase::Prep { .. } | Phase::Ready | Phase::Recording { .. });
-    let (quit, x) = pill_left_of(ui, "ielts.quit", right.right(), buttons_y, "Udahan", None, PillStyle::Utility);
+    let (quit, x) = pill_left_of(ui, "ielts.quit", right.right(), buttons_y, "退出", None, PillStyle::Utility);
     if quit {
         st.cmd(Command::Ielts(IeltsCmd::Quit));
     }
-    if skippable && pill_left_of(ui, "ielts.skip", x - PILL_GAP, buttons_y, "Lewati", None, PillStyle::Utility).0 {
+    if skippable && pill_left_of(ui, "ielts.skip", x - PILL_GAP, buttons_y, "跳过", None, PillStyle::Utility).0 {
         st.cmd(Command::Ielts(IeltsCmd::Skip));
     }
 }
@@ -382,7 +382,7 @@ fn draw_card(ui: &mut Ui, r: Rect, card: &ielts::CueCard) {
     let (_, th) = ui.c.measure(&card.topic, &topic, inner.w);
     ui.c.text(&card.topic, Rect::new(inner.x, inner.y, inner.w, th + 1.0), &topic);
     let mut y = inner.y + th + 4.0;
-    ui.c.text("You should say:", Rect::new(inner.x, y, inner.w, 15.0), &TextStyle::caption().color(palette::TEXT_FAINT));
+    ui.c.text("您可以谈谈以下要点：", Rect::new(inner.x, y, inner.w, 15.0), &TextStyle::caption().color(palette::TEXT_FAINT));
     y += 15.0;
     for b in &card.bullets {
         ui.c.text(&format!("\u{2022}  {b}"), Rect::new(inner.x + 4.0, y, inner.w - 4.0, 15.0), &TextStyle::footnote());
@@ -399,15 +399,15 @@ fn draw_result(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
     let c = &st.ielts;
     let level = c.me.as_ref().and_then(|m| m.rung(c.level));
     let reached = level.is_some_and(|l| v.band >= l.target);
-    ui.c.text("BAND", Rect::new(left.x, left.y, left.w, 14.0), &TextStyle::caption().weight(Weight::Bold).color(palette::TEXT_FAINT).center());
+    ui.c.text("BAND 总分", Rect::new(left.x, left.y, left.w, 14.0), &TextStyle::caption().weight(Weight::Bold).color(palette::TEXT_FAINT).center());
     let band = TextStyle::new(46.0).weight(Weight::Bold).tabular().color(if reached { ACCENT } else { palette::TEXT }).center();
     ui.c.text(&ielts::fmt_band(v.band), Rect::new(left.x, left.y + 14.0, left.w, 54.0), &band);
     if let Some(l) = level {
-        let line = format!("Level {} \u{b7} {}", l.n, l.name);
+        let line = format!("第 {} 关 \u{b7} {}", l.n, l.name);
         ui.c.text(&line, Rect::new(left.x, left.y + 70.0, left.w, 16.0), &TextStyle::footnote().color(palette::TEXT_DIM).center());
     }
     if v.level.unlocked {
-        let text = format!("Level {} kebuka!", v.level.after);
+        let text = format!("已解锁第 {} 关！", v.level.after);
         let st_b = TextStyle::footnote().weight(Weight::Semibold).color(ACCENT).center();
         let w = ui.c.measure(&text, &st_b, left.w).0.ceil() + 24.0;
         let r = Rect::new(left.center().x - w / 2.0, left.y + 94.0, w, 24.0);
@@ -415,12 +415,12 @@ fn draw_result(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
         ui.c.text(&text, r, &st_b);
     }
     if let Some(best) = v.best {
-        let text = format!("terbaik {}", ielts::fmt_band(best));
+        let text = format!("最高分 {}", ielts::fmt_band(best));
         ui.c.text(&text, Rect::new(left.x, left.y + 124.0, left.w, 15.0), &TextStyle::caption().color(palette::TEXT_FAINT).center());
     }
     // Again (at the picked level: the new one, once it opened), or done.
     let y = left.bottom() - PILL_SMALL;
-    let (again, done) = ("Lagi", "Selesai");
+    let (again, done) = ("再练一次", "完成");
     let (wa, wd) = (ui.pill_width(again, false, true), ui.pill_width(done, false, true));
     let x = left.center().x - (wa + PILL_GAP + wd) / 2.0;
     let again_r = Rect::new(x, y, wa, PILL_SMALL);
@@ -458,7 +458,7 @@ fn draw_result(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
     ui.c.unclip();
     // Three tips.
     let y = right.y + 164.0;
-    ui.c.text("TIPS DARI OYEN", Rect::new(right.x, y, right.w, 14.0), &TextStyle::caption().weight(Weight::Bold).color(palette::TEXT_FAINT));
+    ui.c.text("OYEN 考官建议", Rect::new(right.x, y, right.w, 14.0), &TextStyle::caption().weight(Weight::Bold).color(palette::TEXT_FAINT));
     for (i, tip) in v.tips.iter().take(3).enumerate() {
         let r = Rect::new(right.x, y + 16.0 + i as f32 * 15.0, right.w, 15.0);
         ui.c.text(&format!("\u{2022}  {tip}"), r, &TextStyle::caption().color(palette::TEXT_DIM));
@@ -481,19 +481,19 @@ fn draw_stuck(ui: &mut Ui, st: &mut AppState, left: Rect, right: Rect) {
         clicked
     };
     if p == Problem::Mic(MicIssue::Denied) {
-        if button(ui, "ielts.mic-settings", "Buka pengaturan mikrofon", Some(Icon::Open), PillStyle::Primary(ACCENT)) {
+        if button(ui, "ielts.mic-settings", "打开麦克风隐私设置", Some(Icon::Open), PillStyle::Primary(ACCENT)) {
             st.cmd(Command::OpenUrl(MIC_SETTINGS.into()));
         }
-        if button(ui, "ielts.retry", "Coba lagi", None, PillStyle::Neutral) {
+        if button(ui, "ielts.retry", "重试", None, PillStyle::Neutral) {
             st.cmd(Command::Ielts(IeltsCmd::Retry));
         }
     } else {
-        let label = if p.retryable() { "Coba lagi" } else { "Mulai lagi" };
+        let label = if p.retryable() { "重试" } else { "重新开始" };
         if button(ui, "ielts.retry", label, None, PillStyle::Primary(ACCENT)) {
             st.cmd(Command::Ielts(IeltsCmd::Retry));
         }
     }
-    if button(ui, "ielts.quit", "Udahan", None, PillStyle::Utility) {
+    if button(ui, "ielts.quit", "退出", None, PillStyle::Utility) {
         st.cmd(Command::Ielts(IeltsCmd::Quit));
     }
 }
@@ -520,8 +520,8 @@ fn draw_soon(ui: &mut Ui, area: Rect) {
     let r = Rect::new(x, area.y + 40.0, w, 80.0);
     let title = TextStyle::headline().wrap().top();
     let body = TextStyle::footnote().color(palette::TEXT_DIM).wrap().top();
-    let t = "Latihan IELTS di Mac segera hadir";
-    let b = "Mikrofon dan suara Oyen di Mac lagi disiapin. Sementara ini, latihan bareng Oyen di PC Windows dulu ya.";
+    let t = "Mac 版雅思口语教练即将推出";
+    let b = "Mac 端麦克风与 Oyen 语音功能正在准备中。在此期间，请在 Windows 端体验实战口语训练。";
     let (_, th) = ui.c.measure(t, &title, w);
     ui.c.text(t, Rect::new(r.x, r.y, w, th + 1.0), &title);
     ui.c.text(b, Rect::new(r.x, r.y + th + 4.0, w, 40.0), &body);

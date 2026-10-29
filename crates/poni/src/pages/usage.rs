@@ -208,7 +208,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
 /// Services (Done while the list shows) on the right.
 fn top(ui: &mut Ui, st: &mut AppState, r: Rect) {
     let services = st.ui.usage.services;
-    let (label, icon, style) = if services { ("Done", None, PillStyle::Neutral) } else { ("Services", Some(Icon::Sliders), PillStyle::Utility) };
+    let (label, icon, style) = if services { ("完成", None, PillStyle::Neutral) } else { ("服务配置", Some(Icon::Sliders), PillStyle::Utility) };
     let pw = ui.pill_width(label, icon.is_some(), true);
     let pill = Rect::new(r.right() - pw, r.center().y - PILL_SMALL / 2.0, pw, PILL_SMALL);
     if ui.pill(wid("usage.services"), pill, label, icon, style).clicked {
@@ -224,7 +224,7 @@ fn top(ui: &mut Ui, st: &mut AppState, r: Rect) {
     }
 
     // Label then switch, as Settings' rows; the whole of it toggles.
-    let words = "Tell me before I run out";
+    let words = "额度不足前提醒我";
     let lw = ui.c.measure(words, &TextStyle::body(), 400.0).0.ceil();
     let row = Rect::new(r.x, r.y, (lw + 10.0 + SWITCH_W).min((refresh.x - 16.0 - r.x).max(0.0)), r.h);
     if super::settings::switch_row(ui, wid("usage.notices"), row, words, Some(st.settings.usage.notices), st.accent) {
@@ -235,7 +235,7 @@ fn top(ui: &mut Ui, st: &mut AppState, r: Rect) {
     let status = if busy {
         CHECKING.to_string()
     } else {
-        st.usage.readings.values().map(|r| r.checked_at).max().map(|t| format!("Updated {}", clock_at(st, t))).unwrap_or_default()
+        st.usage.readings.values().map(|r| r.checked_at).max().map(|t| format!("已更新于 {}", clock_at(st, t))).unwrap_or_default()
     };
     let x = row.right() + 16.0;
     let room = refresh.x - 8.0 - x;
@@ -1725,8 +1725,8 @@ mod tests {
         let st = state();
         // 12:00 in Jakarta now: 14:20 today, Thursday 09:00, a week on.
         assert_eq!(resets_words(&st, st.unix + 2 * 3600 + 20 * 60), ("resets 14:20".into(), None));
-        assert_eq!(resets_words(&st, st.unix + 45 * 3600), ("resets Thu 09:00".into(), Some("resets Thu".into())));
-        assert_eq!(resets_words(&st, st.unix + 8 * 86_400).1, Some("resets 4 Nov".into()));
+        assert_eq!(resets_words(&st, st.unix + 45 * 3600), ("resets 周四 09:00".into(), Some("resets 周四".into())));
+        assert_eq!(resets_words(&st, st.unix + 8 * 86_400).1, Some("resets 4 11月".into()));
         assert_eq!(in_words(2 * 3600 + 10 * 60), "in 2 h 10 min");
         assert_eq!(in_words(40 * 60 - 5), "in 40 min");
         assert_eq!(in_words(3 * 86_400 + 3600), "in 3 days");

@@ -62,19 +62,19 @@ pub fn height(st: &AppState) -> f32 {
 /// is the one to press (the accent's colour).
 type Button = (&'static str, NotifyCmd, bool);
 
-const SETTINGS: Button = ("Windows settings", NotifyCmd::OpenWindowsSettings, false);
+const SETTINGS: Button = ("Windows 系统设置", NotifyCmd::OpenWindowsSettings, false);
 
 /// What the line under the title says, and the buttons beside it (right to left).
 fn access_look(access: NotifyAccess) -> (&'static str, Vec<Button>) {
     match access {
-        NotifyAccess::Unknown => ("Checking with Windows\u{2026}", vec![]),
-        NotifyAccess::NoPackage => ("Windows lets only the Microsoft Store copy read notifications.", vec![]),
-        NotifyAccess::Ask => ("Windows asks you once before the island can read notifications.", vec![("Allow", NotifyCmd::Ask, true)]),
-        NotifyAccess::Asking => ("Answer Windows' question to go on.", vec![]),
-        NotifyAccess::Unanswered => ("Windows got no answer. Ask again, or turn it on in Windows' settings.", vec![("Ask again", NotifyCmd::Ask, true), SETTINGS]),
-        NotifyAccess::Denied => ("Turned off for Oyenza Studio in Windows' settings.", vec![SETTINGS]),
-        NotifyAccess::Allowed => ("On. New ones from the apps you pick show on the island.", vec![]),
-        NotifyAccess::Failed => ("Windows didn't let the island listen. Switch the add-on off and on to try again.", vec![]),
+        NotifyAccess::Unknown => ("正在与 Windows 确认权限\u{2026}", vec![]),
+        NotifyAccess::NoPackage => ("Windows 限制仅 Microsoft Store 安装版本支持读取系统通知。", vec![]),
+        NotifyAccess::Ask => ("灵动岛需要获得您的授权才能读取并展示系统通知。", vec![("允许", NotifyCmd::Ask, true)]),
+        NotifyAccess::Asking => ("请在 Windows 弹出的提示窗口中点击允许以继续。", vec![]),
+        NotifyAccess::Unanswered => ("未获得 Windows 授权。可再次尝试，或前往 Windows 系统设置中手动开启。", vec![("再次请求", NotifyCmd::Ask, true), SETTINGS]),
+        NotifyAccess::Denied => ("已在 Windows 系统设置中为 Oyenza Studio 关闭了通知访问权限。", vec![SETTINGS]),
+        NotifyAccess::Allowed => ("已开启。来自所选应用的最新通知将即时呈现在灵动岛中。", vec![]),
+        NotifyAccess::Failed => ("Windows 无法启动通知监听。请尝试重新开关本插件。", vec![]),
     }
 }
 
@@ -102,7 +102,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let right = if right < head.right() { right - 16.0 + PILL_GAP } else { right };
     let x = head.x + TEXT_X;
     let w = (right - x).max(0.0);
-    ui.c.text("Notifications", Rect::new(x, cy - 19.0, w, 20.0), &TextStyle::headline());
+    ui.c.text("通知中心", Rect::new(x, cy - 19.0, w, 20.0), &TextStyle::headline());
     let line_color = if st.notify_access == NotifyAccess::Failed { palette::ORANGE } else { palette::TEXT_DIM };
     ui.c.text(line, Rect::new(x, cy + 1.0, w, 17.0), &TextStyle::footnote().color(line_color));
 
@@ -111,15 +111,15 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let col_w = ((area.w - COL_GAP) / 2.0).max(0.0);
     let cols = [area.x, area.x + col_w + COL_GAP];
     let label_st = TextStyle::caption().weight(Weight::Semibold).color(palette::TEXT_FAINT);
-    ui.c.text("APPS", Rect::new(cols[0], area.y + LABELS_Y, col_w, 14.0), &label_st);
-    ui.c.text("THE ISLAND SHOWS", Rect::new(cols[1], area.y + LABELS_Y, col_w, 14.0), &label_st);
+    ui.c.text("应用列表", Rect::new(cols[0], area.y + LABELS_Y, col_w, 14.0), &label_st);
+    ui.c.text("灵动岛显示内容", Rect::new(cols[1], area.y + LABELS_Y, col_w, 14.0), &label_st);
 
     // The apps, in the order they first sent one.
     let row = |i: usize, col: usize| Rect::new(cols[col], area.y + ROWS_Y + i as f32 * ROW_H, col_w, ROW_H);
     let apps: Vec<(String, String, bool)> =
         st.settings.notifications.apps.iter().take(MAX_ROWS).map(|a| (a.id.clone(), a.name.clone(), a.on)).collect();
     if apps.is_empty() {
-        let note = "Apps show up here after their first notification. WhatsApp, Telegram and Phone Link start on.";
+        let note = "首次收到通知的应用将自动收录于此。微信、WhatsApp、Telegram 和手机连接默认已启用。";
         let r = Rect::new(cols[0], area.y + ROWS_Y + 4.0, col_w, MIN_ROWS as f32 * ROW_H - 4.0);
         ui.c.text(note, r, &TextStyle::footnote().color(palette::TEXT_DIM).wrap().top());
     }
@@ -133,11 +133,11 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     // What a notice shows at once.
     let n = &st.settings.notifications;
     let (who, text) = (n.who, n.text);
-    if switch_row(ui, wid("notify.who"), row(0, 1), "Who it's from", Some(who), accent) {
+    if switch_row(ui, wid("notify.who"), row(0, 1), "发信人 / 发信应用", Some(who), accent) {
         st.settings.notifications.who = !who;
         st.cmd(Command::SaveSettings);
     }
-    if switch_row(ui, wid("notify.text"), row(1, 1), "Message text", Some(text), accent) {
+    if switch_row(ui, wid("notify.text"), row(1, 1), "消息正文内容", Some(text), accent) {
         st.settings.notifications.text = !text;
         st.cmd(Command::SaveSettings);
     }

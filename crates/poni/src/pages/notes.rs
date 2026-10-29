@@ -47,8 +47,8 @@ const METER_ROW: f32 = 26.0;
 const ACCENT: Color = oyen::ORANGE;
 const REC: Color = palette::RED;
 const MIC_SETTINGS: &str = "ms-settings:privacy-microphone";
-const SIGN_IN_TITLE: &str = "Meeting notes by Oyen";
-const SIGN_IN_BODY: &str = "One click and Oyen listens to your meeting, Meet, Zoom, Teams or in the room, then writes the notes and the transcript. Sign in to Oyenza to start.";
+const SIGN_IN_TITLE: &str = "Oyen 会议纪要";
+const SIGN_IN_BODY: &str = "一键开启录音并实时转写腾讯会议、Zoom、Teams、Meet 等会议通话，自动生成结构化纪要与逐字稿。请先登录 Oyenza 账号开始使用。";
 
 pub fn height(st: &AppState) -> f32 {
     if signed_in(st) || st.notes.live() {
@@ -118,11 +118,11 @@ fn draw_pro(ui: &mut Ui, st: &AppState, area: Rect) {
     ui.c.fill_rrect(tag, 11.0, ACCENT.with_alpha(0.2));
     ui.c.text("PRO", tag, &TextStyle::caption().weight(Weight::Bold).center().color(ACCENT));
     let r = Rect::new(area.x + LEFT_W + COL_GAP, area.y + 4.0, (area.w - LEFT_W - COL_GAP).max(0.0).min(420.0), area.h);
-    let y = headline(ui, r, "Meeting notes are part of Studio Pro");
-    let body = "One click and Oyen listens to your meeting, Meet, Zoom, Teams or in the room, then writes the notes and the whole transcript. Studio Pro is in early access, so it isn't on this account yet.";
+    let y = headline(ui, r, "会议纪要属于 Studio Pro 进阶版功能");
+    let body = "一键录制并转写腾讯会议、Zoom、Teams、Meet 等会议通话，自动生成会议纪要与完整转录逐字稿。Studio Pro 目前正在抢先体验中，当前账号暂未开通。";
     let y = para(ui, Rect::new(r.x, y + 6.0, r.w, 80.0), body, palette::TEXT_DIM);
     if let OyenzaLink::Connected { account } = &st.oyenza.link {
-        para(ui, Rect::new(r.x, y + 10.0, r.w, 20.0), &format!("Signed in as {account}"), palette::TEXT_FAINT);
+        para(ui, Rect::new(r.x, y + 10.0, r.w, 20.0), &format!("已登录为 {account}"), palette::TEXT_FAINT);
     }
 }
 
@@ -157,9 +157,9 @@ fn draw_button(ui: &mut Ui, st: &mut AppState, phase: &Phase, c: Point) {
     ui.c.fill_circle(c, BUTTON_R, lift(fill));
     ui.c.fill_circle(c, 8.0, if busy { palette::TEXT_FAINT } else { palette::ON_ACCENT });
     let line = match phase {
-        Phase::Sending { .. } | Phase::Writing { .. } => "Taking notes\u{2026}",
-        _ if busy => "Recording kept",
-        _ => "Take notes",
+        Phase::Sending { .. } | Phase::Writing { .. } => "正在记录会议\u{2026}",
+        _ if busy => "录音已保存",
+        _ => "记录会议",
     };
     ui.c.text(line, under, &TextStyle::footnote().weight(Weight::Semibold).center().color(if busy { palette::TEXT_FAINT } else { palette::TEXT }));
     if resp.clicked {
@@ -196,32 +196,32 @@ fn buttons(ui: &mut Ui, x: f32, y: f32, list: &[(&str, &str, Option<Icon>, PillS
 
 fn draw_idle(ui: &mut Ui, st: &mut AppState, r: Rect) {
     let r = Rect::new(r.x, r.y + 4.0, r.w.min(420.0), r.h);
-    let y = headline(ui, r, "Oyen takes your meeting notes");
-    let body = "He listens to your microphone and your PC's sound, so a call in Meet, Zoom or Teams is heard with no bot joining. Stop when it's over: the notes and the transcript are saved to Documents \u{203a} Oyenza Studio \u{203a} Notes.";
+    let y = headline(ui, r, "Oyen 为您记录会议纪要");
+    let body = "同时收录麦克风人声与电脑系统声音，无需机器人加入即可完整记录腾讯会议、Zoom、Teams 等通话。会议结束后点击停止，纪要与逐字稿将自动保存至 文档 \u{203a} Oyenza Studio \u{203a} Notes。";
     let y = para(ui, Rect::new(r.x, y + 6.0, r.w, 80.0), body, palette::TEXT_DIM);
     let foot = Rect::new(r.x, r.bottom() - PILL_SMALL - 6.0, r.w, PILL_SMALL);
     // Only what the line shows: a meeting's transcript can run to thousands of lines.
     let last = st.notes.last.as_ref().map(|l| (l.notes.title.clone(), l.notes.secs));
     match last {
         Some((title, secs)) => {
-            let line = format!("Last: {title} \u{b7} {} min", (secs as f32 / 60.0).round().max(1.0));
-            let w = ui.pill_width("Open", true, true);
+            let line = format!("上次会议: {title} \u{b7} {} 分钟", (secs as f32 / 60.0).round().max(1.0));
+            let w = ui.pill_width("打开", true, true);
             ui.c.text(&line, Rect::new(foot.x, foot.y, foot.w - w - 10.0, foot.h), &TextStyle::footnote().color(palette::TEXT_DIM));
-            if ui.pill(wid("notes.open-last"), Rect::new(foot.right() - w, foot.y, w, PILL_SMALL), "Open", Some(Icon::Open), PillStyle::Utility).clicked {
+            if ui.pill(wid("notes.open-last"), Rect::new(foot.right() - w, foot.y, w, PILL_SMALL), "打开", Some(Icon::Open), PillStyle::Utility).clicked {
                 st.cmd(Command::Notes(NotesCmd::Open));
             }
         }
         None => {
-            para(ui, Rect::new(r.x, (y + 10.0).max(foot.y + 6.0), r.w, 30.0), "Let people know you're taking notes.", palette::TEXT_FAINT);
+            para(ui, Rect::new(r.x, (y + 10.0).max(foot.y + 6.0), r.w, 30.0), "提示：录音前建议征得与会各方知情同意。", palette::TEXT_FAINT);
         }
     }
 }
 
 fn draw_listening(ui: &mut Ui, st: &mut AppState, r: Rect) {
     let r = Rect::new(r.x, r.y + 4.0, r.w.min(420.0), r.h);
-    let y = headline(ui, r, "Oyen is listening");
-    let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 40.0), "Stop when the meeting ends, and he'll write it up.", palette::TEXT_DIM) + 14.0;
-    let rows = [("You", "microphone", st.notes.mic_on, st.notes.mic), ("The call", "the PC's sound", st.notes.pc_on, st.notes.pc)];
+    let y = headline(ui, r, "Oyen 正在倾听记录中");
+    let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 40.0), "会议结束时点击停止，Oyen 将立即为您整理纪要。", palette::TEXT_DIM) + 14.0;
+    let rows = [("本人发言", "麦克风声音", st.notes.mic_on, st.notes.mic), ("会议通话", "电脑系统声音", st.notes.pc_on, st.notes.pc)];
     for (i, (name, source, on, level)) in rows.into_iter().enumerate() {
         let ry = y + i as f32 * METER_ROW;
         let label = TextStyle::footnote().weight(Weight::Semibold);
@@ -233,36 +233,36 @@ fn draw_listening(ui: &mut Ui, st: &mut AppState, r: Rect) {
             let w = (bar.w * level.clamp(0.0, 1.0).sqrt()).max(BAR_H);
             ui.c.fill_rrect(Rect::new(bar.x, bar.y, w, bar.h), BAR_H / 2.0, ACCENT);
         } else {
-            let off = format!("No {source}");
+            let off = format!("未检测到{source}");
             ui.c.text(&off, Rect::new(bar.x, ry, bar.w, 16.0), &TextStyle::footnote().color(palette::TEXT_FAINT));
         }
     }
     let foot = y + 2.0 * METER_ROW + 6.0;
-    para(ui, Rect::new(r.x, foot, r.w, 30.0), "Let people know you're taking notes.", palette::TEXT_FAINT);
+    para(ui, Rect::new(r.x, foot, r.w, 30.0), "提示：录音前建议征得与会各方知情同意。", palette::TEXT_FAINT);
     // The bars follow the voices.
     ui.request_live();
 }
 
 fn draw_sending(ui: &mut Ui, r: Rect, sent: u32, parts: u32) {
     let r = Rect::new(r.x, r.y + 4.0, r.w.min(420.0), r.h);
-    let y = headline(ui, r, "Sending the meeting to Oyen");
-    let line = if parts > 1 { format!("Part {} of {parts}", (sent + 1).min(parts)) } else { "One part".to_string() };
+    let y = headline(ui, r, "正在上传会议录音至 Oyen");
+    let line = if parts > 1 { format!("第 {} / {parts} 节", (sent + 1).min(parts)) } else { "正在准备".to_string() };
     let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 20.0), &line, palette::TEXT_DIM) + 12.0;
     let bar = Rect::new(r.x, y, r.w, BAR_H);
     ui.c.fill_rrect(bar, BAR_H / 2.0, palette::SURFACE);
     let done = if parts == 0 { 0.0 } else { sent as f32 / parts as f32 };
     ui.c.fill_rrect(Rect::new(bar.x, bar.y, (bar.w * done).max(BAR_H), bar.h), BAR_H / 2.0, ACCENT);
-    para(ui, Rect::new(r.x, y + 20.0, r.w, 40.0), "You can close the island: the notes come by themselves.", palette::TEXT_FAINT);
+    para(ui, Rect::new(r.x, y + 20.0, r.w, 40.0), "您可以收起灵动岛：纪要整理完成后将自动呈现在此。", palette::TEXT_FAINT);
 }
 
 fn draw_writing(ui: &mut Ui, st: &AppState, r: Rect, since: f64) {
     let r = Rect::new(r.x, r.y + 4.0, r.w.min(420.0), r.h);
-    let y = headline(ui, r, "Oyen is writing your notes\u{2026}");
+    let y = headline(ui, r, "Oyen 正在为您撰写会议纪要\u{2026}");
     // About a minute for each 20 minutes of meeting, as the server takes it.
     let mins = (st.notes.secs / 1200.0).ceil().max(1.0) as u32;
-    let line = format!("{} so far \u{b7} usually about {mins} min for a meeting this long", fmt_length(st.now - since));
+    let line = format!("已用时 {} \u{b7} 此长度会议通常需约 {mins} 分钟", fmt_length(st.now - since));
     let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 36.0), &line, palette::TEXT_DIM);
-    para(ui, Rect::new(r.x, y + 12.0, r.w, 40.0), "You can close the island: the notes come by themselves.", palette::TEXT_FAINT);
+    para(ui, Rect::new(r.x, y + 12.0, r.w, 40.0), "您可以收起灵动岛：纪要整理完成后将自动呈现在此。", palette::TEXT_FAINT);
 }
 
 fn draw_ready(ui: &mut Ui, st: &mut AppState, r: Rect) {
@@ -273,7 +273,7 @@ fn draw_ready(ui: &mut Ui, st: &mut AppState, r: Rect) {
     let r = Rect::new(r.x, r.y + 2.0, r.w.min(440.0), r.h);
     let title_st = TextStyle::headline();
     ui.c.text(&title, Rect::new(r.x, r.y, r.w, 20.0), &title_st);
-    let when = format!("{:02}:{:02} \u{b7} {} min \u{b7} {actions} action item{}", s.hour, s.minute, (secs as f32 / 60.0).round().max(1.0), if actions == 1 { "" } else { "s" });
+    let when = format!("{:02}:{:02} \u{b7} {} 分钟 \u{b7} {actions} 项待办事项", s.hour, s.minute, (secs as f32 / 60.0).round().max(1.0));
     ui.c.text(&when, Rect::new(r.x, r.y + 22.0, r.w, 15.0), &TextStyle::caption().color(palette::TEXT_DIM));
     // The summary's first lines, as many as fit above the buttons.
     let buttons_y = r.bottom() - PILL_SMALL - 6.0;
@@ -295,10 +295,10 @@ fn draw_ready(ui: &mut Ui, st: &mut AppState, r: Rect) {
         r.x,
         buttons_y,
         &[
-            ("notes.open", "Open notes", Some(Icon::Open), PillStyle::Primary(ACCENT)),
-            ("notes.copy", "Copy", Some(Icon::Copy), PillStyle::Neutral),
+            ("notes.open", "查看纪要", Some(Icon::Open), PillStyle::Primary(ACCENT)),
+            ("notes.copy", "复制", Some(Icon::Copy), PillStyle::Neutral),
             ("notes.folder", "", Some(Icon::Folder), PillStyle::Utility),
-            ("notes.done", "Done", None, PillStyle::Utility),
+            ("notes.done", "完成", None, PillStyle::Utility),
         ],
     );
     for (clicked, cmd) in clicks.into_iter().zip([NotesCmd::Open, NotesCmd::Copy, NotesCmd::Folder, NotesCmd::Done]) {
@@ -321,20 +321,20 @@ fn draw_failed(ui: &mut Ui, st: &mut AppState, r: Rect, p: Problem) {
     let mut list: Vec<(&str, &str, Option<Icon>, PillStyle)> = Vec::new();
     let mut cmds = Vec::new();
     if p == Problem::Capture(CaptureIssue::MicDenied) {
-        list.push(("notes.mic-settings", "Open microphone settings", Some(Icon::Open), PillStyle::Primary(ACCENT)));
+        list.push(("notes.mic-settings", "打开麦克风权限设置", Some(Icon::Open), PillStyle::Primary(ACCENT)));
         cmds.push(Command::OpenUrl(MIC_SETTINGS.into()));
     }
     let kept = st.ui.notes_kept;
     if kept && p.retryable() {
-        let label = if p == Problem::Unfinished { "Write it up" } else { "Try again" };
+        let label = if p == Problem::Unfinished { "生成纪要" } else { "重试" };
         list.push(("notes.retry", label, None, PillStyle::Primary(ACCENT)));
         cmds.push(Command::Notes(NotesCmd::Retry));
     }
     if kept {
-        list.push(("notes.discard", "Throw away", Some(Icon::Trash), PillStyle::Utility));
+        list.push(("notes.discard", "丢弃录音", Some(Icon::Trash), PillStyle::Utility));
         cmds.push(Command::Notes(NotesCmd::Discard));
     } else {
-        list.push(("notes.done", "OK", None, PillStyle::Utility));
+        list.push(("notes.done", "确定", None, PillStyle::Utility));
         cmds.push(Command::Notes(NotesCmd::Done));
     }
     for (clicked, cmd) in buttons(ui, r.x, y, &list).into_iter().zip(cmds) {

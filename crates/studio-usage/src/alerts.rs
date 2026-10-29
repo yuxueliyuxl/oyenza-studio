@@ -420,7 +420,7 @@ mod tests {
     fn back_waits_while_another_window_is_still_out() {
         let mut m = Memory::default();
         m.changes(&snap(Codex, vec![five(0.9), weekly(0.9)]), NOW, &cfg());
-        assert_eq!(words(&m.changes(&snap(Codex, vec![five(1.0), weekly(1.0)]), NOW + 60, &cfg())), [(AlertKind::Out, "Codex: Weekly used up", "Resets Thu 09:00")]);
+        assert_eq!(words(&m.changes(&snap(Codex, vec![five(1.0), weekly(1.0)]), NOW + 60, &cfg())), [(AlertKind::Out, "Codex: Weekly used up", "Resets 周四 09:00")]);
         // The 5-hour comes back, the week is still out: Codex isn't back.
         let five_fresh = Window::new(WindowKind::Session, "5-hour", 0.0).resets(Some(FIVE_RESET + 18_000)).length(Some(18_000));
         assert!(m.changes(&snap(Codex, vec![five_fresh.clone(), weekly(1.0)]), FIVE_RESET + 60, &cfg()).is_empty());
@@ -453,8 +453,8 @@ mod tests {
         let mut m = Memory::default();
         let said = feed(&mut m, &[snap(Claude, vec![five(0.5), weekly(0.5)]), snap(Claude, vec![five(0.9), weekly(0.5)])], &twelve);
         assert_eq!(words(&said[1]), [(AlertKind::Near(90), "Claude Code: 90% of 5-hour", "Resets 2:20 PM")]);
-        assert_eq!(reset_time(WEEK_RESET, NOW, WIB, false), "Thu 9:00 AM");
-        assert_eq!(reset_time(parse_time("2026-10-27T17:00:00Z").unwrap(), NOW, WIB, false), "Wed 12:00 AM");
+        assert_eq!(reset_time(WEEK_RESET, NOW, WIB, false), "周四 9:00 AM");
+        assert_eq!(reset_time(parse_time("2026-10-27T17:00:00Z").unwrap(), NOW, WIB, false), "周三 12:00 AM");
         assert_eq!(reset_time(NOW, NOW - 60, WIB, false), "12:00 PM");
     }
 
@@ -463,22 +463,22 @@ mod tests {
         // 23:30 in Jakarta, a reset at 01:00: Wednesday there, though still
         // Tuesday in UTC.
         let (now, at) = (parse_time("2026-10-27T16:30:00Z").unwrap(), parse_time("2026-10-27T18:00:00Z").unwrap());
-        assert_eq!(reset_time(at, now, WIB, true), "Wed 01:00");
+        assert_eq!(reset_time(at, now, WIB, true), "周三 01:00");
         assert_eq!(reset_time(at, now, 0, true), "18:00");
         // West of UTC: 22:00 on Tuesday in Bogotá, the reset at 01:00.
         let (now, at) = (parse_time("2026-10-28T03:00:00Z").unwrap(), parse_time("2026-10-28T06:00:00Z").unwrap());
-        assert_eq!(reset_time(at, now, -300, true), "Wed 01:00");
+        assert_eq!(reset_time(at, now, -300, true), "周三 01:00");
         // A week or more away: the date, never a weekday that reads as this one.
-        assert_eq!(reset_time(NOW + 7 * 24 * H - 3 * H, NOW, WIB, true), "Tue 3 Nov");
-        assert_eq!(reset_time(NOW + 6 * 24 * H, NOW, WIB, true), "Mon 12:00");
+        assert_eq!(reset_time(NOW + 7 * 24 * H - 3 * H, NOW, WIB, true), "11月3日 周二");
+        assert_eq!(reset_time(NOW + 6 * 24 * H, NOW, WIB, true), "周一 12:00");
         // Seconds before the minute read as the minute.
         assert_eq!(reset_time(FIVE_RESET - 1, NOW, WIB, true), "14:20");
-        assert_eq!(reset_time(parse_time("2026-10-27T16:59:45Z").unwrap(), NOW, WIB, true), "Wed 00:00");
+        assert_eq!(reset_time(parse_time("2026-10-27T16:59:45Z").unwrap(), NOW, WIB, true), "周三 00:00");
         // And in a notice.
         let mut m = Memory::default();
         let late = |used| snap(Codex, vec![Window::new(WindowKind::Session, "5-hour", used).resets(Some(at))]);
         m.changes(&late(0.5), now - 60, &AlertCfg { offset_min: -300, ..cfg() });
-        assert_eq!(words(&m.changes(&late(0.9), now, &AlertCfg { offset_min: -300, ..cfg() })), [(AlertKind::Near(90), "Codex: 90% of 5-hour", "Resets Wed 01:00")]);
+        assert_eq!(words(&m.changes(&late(0.9), now, &AlertCfg { offset_min: -300, ..cfg() })), [(AlertKind::Near(90), "Codex: 90% of 5-hour", "Resets 周三 01:00")]);
     }
 
     #[test]
@@ -518,7 +518,7 @@ mod tests {
         let opus = |used| Window::new(WindowKind::Weekly, "Weekly · Opus", used).resets(Some(WEEK_RESET));
         let mut m = Memory::default();
         let said = feed(&mut m, &[snap(Claude, vec![weekly(0.5), opus(0.7)]), snap(Claude, vec![opus(0.85), weekly(0.5)])], &cfg());
-        assert_eq!(words(&said[1]), [(AlertKind::Near(85), "Claude Code: 85% of Weekly · Opus", "Resets Thu 09:00")]);
+        assert_eq!(words(&said[1]), [(AlertKind::Near(85), "Claude Code: 85% of Weekly · Opus", "Resets 周四 09:00")]);
         // The same label on another kind is another window: its first reading says nothing.
         let mut m = Memory::default();
         let monthly = Window::new(WindowKind::Monthly, "Weekly", 0.9);
@@ -574,8 +574,8 @@ mod tests {
         let premium = |used| Window::new(WindowKind::Monthly, "Premium requests", used).resets(Some(dec1));
         let mut m = Memory::default();
         let said = feed(&mut m, &[snap(Copilot, vec![premium(0.5)]), snap(Copilot, vec![premium(0.9)]), snap(Copilot, vec![premium(1.0)])], &cfg());
-        assert_eq!(words(&said[1]), [(AlertKind::Near(90), "GitHub Copilot: 90% used", "Premium requests · resets Tue 1 Dec")]);
-        assert_eq!(words(&said[2]), [(AlertKind::Out, "GitHub Copilot: 100% used", "Premium requests · resets Tue 1 Dec")]);
+        assert_eq!(words(&said[1]), [(AlertKind::Near(90), "GitHub Copilot: 90% used", "Premium requests · resets 12月1日 周二")]);
+        assert_eq!(words(&said[2]), [(AlertKind::Out, "GitHub Copilot: 100% used", "Premium requests · resets 12月1日 周二")]);
     }
 
     #[test]

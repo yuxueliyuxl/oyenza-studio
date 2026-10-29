@@ -133,8 +133,8 @@ pub const SCRIPT_READER: Addon = Addon {
 /// front, System on or off.
 pub const SYSTEM: Addon = Addon {
     id: "system",
-    title: "System",
-    blurb: "Live CPU, GPU, memory, drives, network and power, and the apps using them.",
+    title: "系统监控",
+    blurb: "实时监控 CPU、GPU、内存、硬盘、网络及能耗，查看正在使用的应用程序。",
     mac_blurb: None,
     tag: "",
     files: &[],
@@ -149,8 +149,8 @@ pub const SYSTEM: Addon = Addon {
 /// for the steps.
 pub const HEALTH: Addon = Addon {
     id: "health",
-    title: "Health",
-    blurb: "Your steps from Oyenza on your phone: today against your goal, and your week.",
+    title: "健康步数",
+    blurb: "从手机端 Oyenza 同步健康步数：今日步数达标进度与近一周走势。",
     mac_blurb: None,
     tag: "",
     files: &[],
@@ -163,8 +163,8 @@ pub const HEALTH: Addon = Addon {
 /// prices are asked for only while its page is on screen.
 pub const STOCKS: Addon = Addon {
     id: "stocks",
-    title: "Stocks",
-    blurb: "The IHSG and up to 10 IDX stocks from oyenza.trade, 10 minutes behind IDX.",
+    title: "股市行情",
+    blurb: "来自 oyenza.trade 的 IHSG 与最多 10 只 IDX 股票行情走势（延迟 10 分钟）。",
     mac_blurb: None,
     tag: "",
     files: &[],
@@ -180,8 +180,8 @@ pub const STOCKS: Addon = Addon {
 /// it works in the Microsoft Store copy; the Mac has no way to read them.
 pub const NOTIFICATIONS: Addon = Addon {
     id: "notifications",
-    title: "Notifications",
-    blurb: "Messages from WhatsApp, Telegram and your phone in the island.",
+    title: "通知中心",
+    blurb: "在灵动岛中实时接收并展示来自微信、WhatsApp、Telegram 和手机连接的通知消息。",
     mac_blurb: None,
     tag: "",
     files: &[],
@@ -196,8 +196,8 @@ pub const NOTIFICATIONS: Addon = Addon {
 /// shows its own bar and controls.
 pub const SCREEN_RECORDER: Addon = Addon {
     id: "recorder",
-    title: "Screen recorder",
-    blurb: "Record your screen from the island, with Oyenza Studio Recorder.",
+    title: "屏幕录制",
+    blurb: "配合 Oyenza Studio 录屏组件，直接在灵动岛中快捷录制屏幕。",
     mac_blurb: None,
     tag: "",
     files: &[],
@@ -211,8 +211,8 @@ pub const SCREEN_RECORDER: Addon = Addon {
 /// tab, and nothing of it runs: no microphone, no player, no calls.
 pub const IELTS: Addon = Addon {
     id: "ielts",
-    title: "IELTS",
-    blurb: "Practise IELTS Speaking out loud: Oyen asks, listens and gives you a band.",
+    title: "雅思口语教练",
+    blurb: "雅思口语真人模拟实战：Oyen 语音发问、倾听作答并给出权威评分与反馈。",
     mac_blurb: None,
     tag: "",
     files: &[],
@@ -229,8 +229,8 @@ pub const IELTS: Addon = Addon {
 /// the Mac's own sound is still to come.
 pub const MEETING_NOTES: Addon = Addon {
     id: "notes",
-    title: "Meeting notes",
-    blurb: "One click and Oyen listens to your meeting, Meet, Zoom or Teams, and writes the notes.",
+    title: "会议纪要",
+    blurb: "一键录音并实时转写腾讯会议、Zoom、Teams、Meet 等会议音频，自动生成结构化会议纪要 (Pro)。",
     mac_blurb: None,
     tag: "",
     files: &[],
