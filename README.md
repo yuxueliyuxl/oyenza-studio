@@ -1,21 +1,24 @@
 <p align="center"><img src="art/oyen-poni-peek.webp" width="260" alt="Oyen peeking over a playing island"></p>
 
-<h1 align="center">0 downloads</h1>
+<h1 align="center">7 downloads</h1>
 
-<p align="center">of Oyenza Studio for Windows, from GitHub<br>Last 7 days: <b>0</b> · <b>0</b> stars on GitHub</p>
+<p align="center">of Oyenza Studio for Windows, from GitHub since 29 Oct 2026<br>Latest release, 0.2.15: <b>3</b> · Last 7 days: <b>7</b> · <b>0</b> stars on GitHub</p>
 
-<p align="center"><img src="downloads.svg" width="820" alt="Bar chart of downloads per release: "></p>
+<p align="center"><img src="downloads.svg" width="820" alt="Bar chart of downloads per release: 0.2.16 4, 0.2.15 3"></p>
 
 ## Per release
 
-| Release | Published |  | Total |
-| --- | --- |  | --: |
-| **All releases** | |  | **0** |
+| Release | Published | Download button | Versioned installer | Portable zip | Other files | Total |
+| --- | --- | --: | --: | --: | --: | --: |
+| [0.2.16](https://github.com/yuxueliyuxl/oyenza-studio/releases/tag/v0.2.16) | 29 Oct 2026 | 0 | 1 | 2 | 1 | 4 |
+| [0.2.15](https://github.com/yuxueliyuxl/oyenza-studio/releases/tag/v0.2.15) | 29 Oct 2026 | 1 | 0 | 1 | 1 | 3 |
+| **All releases** | | **1** | **1** | **3** | **2** | **7** |
 
 ## Per day
 
 | Day | Downloads |
 | --- | --: |
+| Today | 7 |
 
 ## On GitHub
 
@@ -28,8 +31,9 @@
 - GitHub updates its counters every few minutes, so for a while a counter may not show a CI download that is already taken off. Each file's number keeps its highest reading, so numbers only go up.
 - Still in the numbers: our own check of each new release (one download through the Download button) and any bots. GitHub can't tell those apart.
 - Oyenza Studio itself sends nothing: no accounts, no tracking. These are GitHub's download counters, read every hour.
+- GitHub keeps no dates for downloads, so everything before the first reading counts on 29 Oct 2026.
 - Page views and clones need a `METRICS_TOKEN` repository secret: a fine-grained token for this repository with Administration: Read-only. GitHub keeps them for 14 days only.
 
 </details>
 
-<sub>Updated 29 Oct 2026, 02:53 UTC by [Download stats](https://github.com/yuxueliyuxl/oyenza-studio/actions/workflows/metrics.yml), every hour · Data: [downloads](data/downloads.csv), [CI downloads](data/ci-downloads.csv), [stars](data/repo.csv), [summary.json](summary.json)</sub>
+<sub>Updated 29 Oct 2026, 10:25 UTC by [Download stats](https://github.com/yuxueliyuxl/oyenza-studio/actions/workflows/metrics.yml), every hour · Data: [downloads](data/downloads.csv), [CI downloads](data/ci-downloads.csv), [stars](data/repo.csv), [summary.json](summary.json)</sub>
