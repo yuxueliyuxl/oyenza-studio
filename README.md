@@ -18,7 +18,8 @@
 
 | Day | Downloads |
 | --- | --: |
-| Today | 7 |
+| Today | 0 |
+| 29 Oct 2026 | 7 |
 
 ## On GitHub
 
@@ -36,4 +37,4 @@
 
 </details>
 
-<sub>Updated 29 Oct 2026, 10:25 UTC by [Download stats](https://github.com/yuxueliyuxl/oyenza-studio/actions/workflows/metrics.yml), every hour · Data: [downloads](data/downloads.csv), [CI downloads](data/ci-downloads.csv), [stars](data/repo.csv), [summary.json](summary.json)</sub>
+<sub>Updated 30 Oct 2026, 02:09 UTC by [Download stats](https://github.com/yuxueliyuxl/oyenza-studio/actions/workflows/metrics.yml), every hour · Data: [downloads](data/downloads.csv), [CI downloads](data/ci-downloads.csv), [stars](data/repo.csv), [summary.json](summary.json)</sub>
