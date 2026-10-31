@@ -1,6 +1,6 @@
 {
   "repo": "yuxueliyuxl/oyenza-studio",
-  "checked_at": "2026-10-30T02:09:12Z",
+  "checked_at": "2026-10-31T01:03:32Z",
   "since": "2026-10-29",
   "downloads": 7,
   "github_count": 7,
@@ -54,6 +54,10 @@
     },
     {
       "date": "2026-10-30",
+      "downloads": 0
+    },
+    {
+      "date": "2026-10-31",
       "downloads": 0
     }
   ]
